@@ -63,16 +63,25 @@ bash_case() {  # <allow|deny> <agent> <command>
 }
 bash_case allow test-writer 'npm test 2>&1 | tail -20'
 bash_case allow test-writer 'python3 -m pytest -q tests/ >&2'
-bash_case allow test-writer 'go test ./... && echo ok'
+bash_case allow test-writer 'CI=1 go test ./... && echo ok'
 bash_case allow test-writer 'git status --short; git diff'
+bash_case allow test-writer 'npm run test:unit -- --watch=false'
+bash_case allow test-writer 'cargo test -q | grep -c ok'
 bash_case deny  test-writer 'cat > src/x.py <<EOF
 x
 EOF'
 bash_case deny  test-writer 'echo hi >> src/x.py'
+bash_case deny  test-writer 'npm test &> out.txt'
 bash_case deny  test-writer 'sed -i "" "s/a/b/" src/x.py'
 bash_case deny  test-writer 'python3 -c "open(\"src/x.py\",\"w\").write(\"x\")"'
+bash_case deny  test-writer 'bash -c "rm -rf src"'
+bash_case deny  test-writer 'echo $(rm -rf src)'
 bash_case deny  test-writer 'git commit -m "x"'
+bash_case deny  test-writer 'git checkout -- src'
+bash_case deny  test-writer 'npm run build'
 bash_case deny  test-writer 'cp tests/a.py src/a.py'
+bash_case deny  test-writer 'find . -name "*.py" | xargs rm'
+bash_case deny  test-writer 'echo "unbalanced'
 bash_case deny  mods:test-writer 'npm install left-pad'
 bash_case allow general-purpose 'echo hi > src/x.py'
 

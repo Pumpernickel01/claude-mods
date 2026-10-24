@@ -1,9 +1,15 @@
 # test-writer-guard
 
-PreToolUse hook on `Edit|Write` that enforces the `mods:test-writer` agent's
+PreToolUse hook on `Edit|Write|Bash` that enforces the `mods:test-writer` agent's
 one rule: it may only create or edit test files. Python 3 stdlib only.
 
 ## What it does
+
+On `Bash`, when the caller is the test-writer agent, any command that can write
+files or history is denied: redirects (`>`, `>>`, but not `2>&1`/`>&2`), `tee`,
+`mv`/`cp`/`rm`/`mkdir`/`touch`/`chmod`, `sed -i`, `python -c`/`node -e`,
+`git commit|push|add|checkout|reset|...`, and package installs. Running tests
+(`npm test`, `pytest`, `go test`, `git status`) stays allowed.
 
 On every `Edit` / `Write`, `guard.py` reads the hook stdin JSON. If
 `agent_type` is `test-writer` or `mods:test-writer` (the plugin-scoped name),
@@ -33,7 +39,7 @@ Nothing to configure. The plugin's `hooks/hooks.json` registers it:
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|Bash",
         "hooks": [
           {
             "type": "command",
