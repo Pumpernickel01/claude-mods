@@ -18,6 +18,7 @@ LOG_PATH = os.environ.get(
 )
 
 FIELDS = ("session_id", "agent_id", "agent_type", "cwd", "transcript_path")
+ROTATE_BYTES = 20 * 1024 * 1024
 
 
 def emit(event, status="running", hook_input=None, **extra):
@@ -33,6 +34,8 @@ def emit(event, status="running", hook_input=None, **extra):
     try:
         d = os.path.dirname(LOG_PATH)
         os.makedirs(d, mode=0o700, exist_ok=True)
+        if os.path.isfile(LOG_PATH) and os.path.getsize(LOG_PATH) > ROTATE_BYTES:
+            os.replace(LOG_PATH, LOG_PATH + ".1")  # readers see the file shrink and start over at 0
         fd = os.open(LOG_PATH, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
         with os.fdopen(fd, "a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n")

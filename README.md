@@ -21,8 +21,8 @@ Then add the status line to `~/.claude/settings.json` (plugins cannot set it):
 
 On the development machine the marketplace is the local checkout, so the path
 is `~/claude-mods/statusline/statusline.sh`. Restart Claude Code once.
-First use of the MCP servers and the monitor downloads `mcp`, `psycopg`,
-`pyserial` and `textual` into uv's cache (network, once). Nothing is installed
+First use of the MCP servers downloads `mcp`, `psycopg` and `pyserial` into
+uv's cache (network, once). Nothing is installed
 system-wide; `uv` must be on PATH.
 
 ## What you get
@@ -44,7 +44,6 @@ Subagents are `mods:<name>`. MCP tools are `mcp__plugin_mods_<server>__<tool>`.
 | /mods:review | Read-only review of uncommitted changes: bugs, error handling, security, debug leftovers | type it | delete `skills/review` |
 | /mods:explain-error | Paste an error; finds the cause, explains, proposes a fix, applies only on your OK | type it | delete `skills/explain-error` |
 | /mods:changelog | Release notes since the last tag grouped by commit type | type it | delete `skills/changelog` |
-| /mods:monitor | Open / close / toggle the agent monitor window | type it | delete `skills/monitor` |
 | mods:test-writer | Writes and runs tests only (enforced by test-writer-guard) | `@agent-mods:test-writer` | delete `agents/test-writer.md` |
 | mods:security-auditor | Read-only audit (Read/Glob/Grep only): injection, secrets, deserialization, path traversal, shell calls | `@agent-mods:security-auditor` | delete the file |
 | mods:docs-updater | Syncs README, docstrings and comments with code changes | `@agent-mods:docs-updater` | delete the file |
@@ -53,7 +52,7 @@ Subagents are `mods:<name>`. MCP tools are `mcp__plugin_mods_<server>__<tool>`.
 | scanner (MCP) | `get_status`, `read_config`, `scan`; mock by default, real serial transport is a documented stub | `/mcp` | remove from `.mcp.json` |
 | local-docs (MCP) | `list_docs`, `search`, `read_doc` over PDFs/markdown/text in `DOCS_DIR` (default `~/Documents/datasheets`, created if missing) | `/mcp` | remove from `.mcp.json` |
 | db-inspector (MCP) | Read-only SQLite (auto-detected) and PostgreSQL (`DB_INSPECTOR_URL`), enforced at the connection and by a statement filter | `/mcp` | remove from `.mcp.json` |
-| monitor | Live TUI of agents and subagents (status, elapsed, tool calls, tokens) plus an animated communication graph, in a window to the right | `/mods:monitor open` | `CLAUDE_MODS_DISABLE=monitor` |
+| monitor | Records every agent start, tool call and stop to `~/.claude/agent-monitor/events.jsonl`; the herdr column's Shell pane (user-level mod `~/.claude/mods/activity-pane`) shows them as **Agents** (status, elapsed, tool calls, tokens per agent) and **Agent graph** (animated spawn / message graph) | Shift+Tab in the Shell pane; Tab cycles Agents → Agent graph → Shell | `CLAUDE_MODS_DISABLE=monitor` |
 | terminals | `lib/termcap` detection, `show-image`, `termcheck`, docs for keybindings, SSH terminfo, rendering | `show-image <file>`, `termcheck` | nothing to disable |
 
 `CLAUDE_MODS_DISABLE` takes a comma-separated list and goes in `settings.json`
@@ -66,17 +65,15 @@ under `"env"`.
 | Colours | 24-bit on macOS 26 (Terminal 2.15 build 464+), 256 before; detected automatically | 24-bit |
 | Inline images (`show-image`) | `chafa` text-art if installed, else Quick Look; path always printed | Kitty graphics protocol in a split |
 | Notifications | macOS notification | macOS notification plus Ghostty's own OSC 777 popup |
-| Monitor window | AppleScript: new window placed right of the front window (main window shrinks to the left half on narrow screens) | AppleScript right split of the focused terminal; new window fallback |
 | Shift+Enter newline | works without setup; Option+Enter and `\`+Enter too | works without setup |
 | SSH | nothing special | `xterm-ghostty` terminfo is missing on remote hosts: see `docs/terminals/ssh.md` |
 
-Inside tmux the monitor uses `tmux split-window -h` in both terminals.
 Run `termcheck` in each terminal to verify colours, Unicode and box drawing.
 Details and profile settings: `docs/terminals/`.
 
 ## macOS permissions and optional packages
 
-- First `/mods:monitor open` or `show-image --window` triggers the Automation
+- First `show-image --window` triggers the Automation
   prompt "Terminal/Ghostty wants to control Terminal/Ghostty"; allow it.
 - First notification may ask to allow notifications from Script Editor or
   terminal-notifier.

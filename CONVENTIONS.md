@@ -20,7 +20,7 @@ claude-mods/
   agents/<name>.md                  subagents
   statusline/                       status line script + tests
   mcp/<server-name>/                one folder per MCP server
-  monitor/                          agent monitor TUI + window placement + /monitor command
+  monitor/                          agent monitor event hooks (views: herdr Shell pane, ~/.claude/mods/activity-pane)
   docs/                             user-facing docs (terminal setup, permissions)
 ```
 
@@ -33,10 +33,9 @@ not memory.
 - Hooks: `#!/bin/bash` (must run on macOS bash 3.2) or `#!/usr/bin/env python3`
   (stdlib only, 3.9+). Anything that parses JSON, needs a timeout, or has more
   than ~30 lines of logic: use Python. Bash is for thin wrappers.
-- No new dependencies unless the spec needs them. The two allowed exceptions:
+- No new dependencies unless the spec needs them. The one allowed exception:
   - MCP servers: `uv run --with mcp python server.py` (uv is installed; no
     system install).
-  - Monitor TUI: `uv run --with textual python monitor.py`.
   Pin versions with `--with 'pkg>=X,<Y'`.
 - Formatters, `chafa`, `terminal-notifier`, `tmux` etc. are OPTIONAL: detect
   with `command -v`, degrade silently, and list them in REPORT.md as
@@ -120,7 +119,7 @@ from the hook stdin if you pass it): `ts` (ISO-8601 UTC), `event`
 session_end|notification`), `status` (`running|done|failed|blocked`), `session_id`,
 `agent_id` (null for main session), `agent_type`, `description`, `tool`,
 `parent_agent_id`, `cost_usd`, `tokens`. Other mods may append; only the
-monitor reads. Nobody rewrites or truncates it (the monitor rotates by size).
+monitor reads. Nobody rewrites or truncates it (`lib/events.py` rotates it at 20 MB).
 
 ## Testing (honest)
 
