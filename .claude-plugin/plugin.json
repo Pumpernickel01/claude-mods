@@ -1,0 +1,14 @@
+{
+  "name": "mods",
+  "displayName": "Claude Mods",
+  "version": "0.1.0",
+  "description": "Hooks, skills, subagents, MCP servers, status line and a live agent monitor for Claude Code on macOS (Terminal.app and Ghostty), Linux-friendly where cheap.",
+  "author": {
+    "name": "Pumpernickel01",
+    "url": "https://github.com/Pumpernickel01"
+  },
+  "homepage": "https://github.com/Pumpernickel01/claude-mods",
+  "repository": "https://github.com/Pumpernickel01/claude-mods",
+  "license": "MIT",
+  "keywords": ["hooks", "skills", "agents", "mcp", "statusline", "monitor", "macos", "terminal", "ghostty"]
+}
