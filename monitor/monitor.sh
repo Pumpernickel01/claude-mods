@@ -29,8 +29,8 @@ do_open() {
       id="$(tmux split-window -h -l 45% -P -F '#{pane_id}' "$CMD")" || return 1
       backend=tmux; msg="tmux pane $id" ;;
     ghostty)
-      # "shell:" makes Ghostty run the string via /bin/sh -c (Ghostty >= 1.2)
-      id="$(osascript "$AS/ghostty_open.applescript" "shell:$CMD")" || return 1
+      # the script types the command into the new split's shell; "; exit" closes the split when the monitor quits
+      id="$(osascript "$AS/ghostty_open.applescript" "$CMD; exit")" || return 1
       backend=ghostty; msg="Ghostty ${id%%:*} ${id#*:}" ;;
     *)
       # geometry of the screen holding the front Terminal window (not the main screen: multi-display)

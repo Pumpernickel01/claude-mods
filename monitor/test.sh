@@ -181,7 +181,7 @@ TMUX=/tmp/fake,1,0 bash "$SH" close >/dev/null; grep -q '^kill-pane -t %7$' "$FA
 
 out="$(run_sh env TERM_PROGRAM=ghostty TERM=xterm-ghostty bash "$SH" open)"
 check "ghostty backend" "$out" "monitor opened: Ghostty terminal t-1"
-grep -q "^$HERE/applescript/ghostty_open.applescript shell:cd '" "$FAKE_LOG" && ok "  osascript got script path + shell: command as argv" || bad "  osascript args: $(cat "$FAKE_LOG")"
+grep -q "^$HERE/applescript/ghostty_open.applescript cd '.*monitor.py; exit$" "$FAKE_LOG" && ok "  osascript got script path + command as argv" || bad "  osascript args: $(cat "$FAKE_LOG")"
 bash "$SH" close >/dev/null; grep -q "^$HERE/applescript/ghostty_close.applescript terminal t-1$" "$FAKE_LOG" && ok "  close passes kind + id" || bad "  close: $(cat "$FAKE_LOG")"
 
 out="$(run_sh env TERM_PROGRAM=Apple_Terminal TERM=xterm-256color bash "$SH" open)"

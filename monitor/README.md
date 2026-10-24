@@ -96,8 +96,11 @@ stops (`input + cache read + cache creation` as "in", `output` as "out").
 
 ## Terminal.app vs Ghostty
 
-- Ghostty gets a real split pane inside your window; Terminal.app gets a second
-  window (Terminal.app has no scriptable splits).
+- Ghostty gets a real split pane inside your window: AppleScript `split ...
+  direction right`, then the command is entered with `input text` plus a
+  `send key "enter"` (Ghostty 1.3.1 ignores the `command` of a surface
+  configuration, and pasted text alone stays on the prompt under bracketed
+  paste). Terminal.app gets a second window (no scriptable splits).
 - Terminal.app runs at 24-bit on macOS 26 and 256 colours on older releases
   (detected by `lib/termcap`); Ghostty at 24-bit.
 - Both need the one-time Automation permission above; tmux needs none.
