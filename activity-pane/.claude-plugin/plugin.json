@@ -1,0 +1,6 @@
+{
+  "name": "activity-pane",
+  "version": "0.1.0",
+  "description": "A live pane listing every tool call of the session, with its outcome and duration",
+  "types": "./types/index.d.ts"
+}

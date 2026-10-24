@@ -20,7 +20,8 @@ claude-mods/
   agents/<name>.md                  subagents
   statusline/                       status line script + tests
   mcp/<server-name>/                one folder per MCP server
-  monitor/                          agent monitor event hooks (views: herdr Shell pane, ~/.claude/mods/activity-pane)
+  monitor/                          agent monitor event hooks (views: activity-pane's Shell pane)
+  activity-pane/                    herdr column beside Claude (separate function-hooks mod, CLAUDE_CODE_PLUGIN_DIRS)
   docs/                             user-facing docs (terminal setup, permissions)
 ```
 

@@ -6,7 +6,7 @@
 - `monitor/test.sh` — hook checks.
 - `lib/events.py` — rotates the log at 20 MB.
 
-The views live in the user-level mod `~/.claude/mods/activity-pane`: `viewer/shell_tabs.py` wraps the herdr column's Shell pane (Shift+Tab: Agents, Tab: Agent graph, back to Shell), reading this log for the session the column's feed names; tested by `viewer/shell_tabs_test.py`.
+The views live in the function-hooks mod `activity-pane/` (moved into this repo from `~/.claude/mods/activity-pane` on 2026-10-24): `viewer/shell_tabs.py` wraps the herdr column's Shell pane (Shift+Tab: Agents, Tab: Agent graph, back to Shell), reading this log for the session the column's feed names; tested by `viewer/shell_tabs_test.py`.
 
 Replaced 2026-10-24: the Textual window (`monitor.py`, `monitor.sh`, AppleScript placement, `test_tui.py`, the `/mods:monitor` skill, `CLAUDE_MODS_MONITOR_AUTO`), then a Claude Code pane module (`monitor/register.tsx`) that could not show inside herdr. Both are in git history.
 

@@ -6,7 +6,7 @@ one event per agent start, tool call, agent stop and session change to
 `~/.claude/agent-monitor/events.jsonl`.
 
 The half that draws is the **Shell** pane of the herdr column beside Claude,
-made by the user-level mod `~/.claude/mods/activity-pane` (its
+made by the function-hooks mod `../activity-pane` (its
 `viewer/shell_tabs.py`). That pane runs your shell and has two more views:
 
 - **Agents**: one row per agent plus one for the main session: type, status

@@ -52,7 +52,8 @@ Subagents are `mods:<name>`. MCP tools are `mcp__plugin_mods_<server>__<tool>`.
 | scanner (MCP) | `get_status`, `read_config`, `scan`; mock by default, real serial transport is a documented stub | `/mcp` | remove from `.mcp.json` |
 | local-docs (MCP) | `list_docs`, `search`, `read_doc` over PDFs/markdown/text in `DOCS_DIR` (default `~/Documents/datasheets`, created if missing) | `/mcp` | remove from `.mcp.json` |
 | db-inspector (MCP) | Read-only SQLite (auto-detected) and PostgreSQL (`DB_INSPECTOR_URL`), enforced at the connection and by a statement filter | `/mcp` | remove from `.mcp.json` |
-| monitor | Records every agent start, tool call and stop to `~/.claude/agent-monitor/events.jsonl`; the herdr column's Shell pane (user-level mod `~/.claude/mods/activity-pane`) shows them as **Agents** (status, elapsed, tool calls, tokens per agent) and **Agent graph** (animated spawn / message graph) | Shift+Tab in the Shell pane; Tab cycles Agents → Agent graph → Shell | `CLAUDE_MODS_DISABLE=monitor` |
+| monitor | Records every agent start, tool call and stop to `~/.claude/agent-monitor/events.jsonl`; the herdr column's Shell pane (`activity-pane`) shows them as **Agents** (status, elapsed, tool calls, tokens per agent) and **Agent graph** (animated spawn / message graph) | Shift+Tab in the Shell pane; Tab cycles Agents → Agent graph → Shell | `CLAUDE_MODS_DISABLE=monitor` |
+| activity-pane | When Claude runs in herdr, a column beside it: Data flow (+ Guide), Shell (+ Agents, Agent graph), Tools. A separate function-hooks mod, see `activity-pane/README.md` | add the folder to `CLAUDE_CODE_PLUGIN_DIRS` | remove it from `CLAUDE_CODE_PLUGIN_DIRS` |
 | terminals | `lib/termcap` detection, `show-image`, `termcheck`, docs for keybindings, SSH terminfo, rendering | `show-image <file>`, `termcheck` | nothing to disable |
 
 `CLAUDE_MODS_DISABLE` takes a comma-separated list and goes in `settings.json`
@@ -97,7 +98,7 @@ shared `lib/termcap` and `lib/events`), `FORMATS.md` is the verbatim format
 reference from the Claude Code docs. Run all tests:
 
 ```
-for t in hooks/*/test.sh skills/*/test.sh lib/test_termcap.sh bin/test_*.sh monitor/test.sh; do bash "$t" >/dev/null && echo "ok $t" || echo "FAIL $t"; done
+for t in hooks/*/test.sh skills/*/test.sh lib/test_termcap.sh bin/test_*.sh monitor/test.sh activity-pane/test.sh; do bash "$t" >/dev/null && echo "ok $t" || echo "FAIL $t"; done
 for d in mcp/*/; do (cd "$d" && uv run --quiet --with 'mcp>=1.10,<2' --with 'psycopg[binary]>=3.1,<4' --with 'pyserial>=3.5,<4' python -B -m unittest -q); done
 ```
 
