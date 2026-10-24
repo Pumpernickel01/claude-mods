@@ -22,7 +22,7 @@ Devin Desktop, Alacritty before 0.16 and Zed. Inside tmux, Shift+Enter additiona
 - **Ghostty**: nothing to change. Ghostty implements the kitty keyboard protocol (Ghostty release notes
   mention "programs using Kitty Keyboard protocol"; it is listed among supporting terminals in
   third-party docs), which is how Claude Code distinguishes Shift+Enter from Enter. Do **not** add
-  `keybind = shift+enter=text:\n`: it is not needed, and the `text:` action would bypass the protocol.
+  `keybind = shift+enter=text:\n`: the docs table says it is not needed.
   Unrelated defaults that look similar: `super+enter` = `toggle_fullscreen`,
   `super+shift+enter` = `toggle_split_zoom`.
 

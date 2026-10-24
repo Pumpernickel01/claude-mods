@@ -10,7 +10,12 @@ on run argv
     set wait after command of cfg to false
     try
       set t to focused terminal of selected tab of front window
-      set nt to split t direction right with configuration cfg
+      try
+        set nt to split t direction right with configuration cfg
+      on error
+        -- record literal in case the configuration object does not accept "set command of"
+        set nt to split t direction right with configuration {command:cmd, wait after command:false}
+      end try
       return "terminal:" & (id of nt)
     on error
       set w to new window with configuration cfg

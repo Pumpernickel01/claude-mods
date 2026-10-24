@@ -39,7 +39,7 @@ session ends.
 | tmux (`$TMUX` set, any terminal) | `tmux split-window -h -l 45%` to the right; `close` kills that pane |
 | Ghostty | AppleScript `split <focused terminal> direction right with configuration {command: ...}` from Ghostty's own dictionary (`Ghostty.sdef`). If there is no front window it falls back to `new window`. `close` closes that surface / window |
 | Terminal.app | AppleScript `do script` opens a new window titled "Claude agents", same height as yours, to its right. When fewer than 60 columns fit on the right your window is first shrunk to the left half and the monitor takes the right half. Screen size comes from `NSScreen` via a JavaScript-for-Automation one-liner (no permission needed) |
-| anything else (VS Code, iTerm2, wrappers) | Same as Terminal.app: a Terminal.app window is opened and `open` says so |
+| anything else (VS Code, iTerm2, wrappers) | Same as Terminal.app: a Terminal.app window is opened and `open` says so. The window it measures (and may shrink) is Terminal.app's own front window, not your editor; if Terminal.app was not running it starts with its default window first |
 
 The monitor's command line is passed to tmux / AppleScript as an argument, never
 spliced into script text. The window closes by itself when you press `q`

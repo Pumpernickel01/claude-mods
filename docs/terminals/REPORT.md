@@ -86,9 +86,11 @@ ok   alacritty              alacritty 1 none osascript 0 1
 ok   unknown                unknown 0 none osascript 0 0
 ok   unknown_colorterm      unknown 1 none osascript 0 1
 ok   empty_env              unknown 0 none osascript 0 0
-ok   cache file 1792847916 JetBrainsMonoNFM-Regular
-time termcap.sh: cold(cache miss) 15.3 ms, warm min 4.3 ms, warm avg 4.5 ms
-time termcap.py: cold(cache miss) 20.4 ms, warm min 18.6 ms, warm avg 18.9 ms
+ok   set -eu sourcing (cache miss)
+ok   set -eu sourcing (cache hit)
+ok   cache file 1792848418 JetBrainsMonoNFM-Regular
+time termcap.sh: cold(cache miss) 14.8 ms, warm min 4.2 ms, warm avg 4.4 ms
+time termcap.py: cold(cache miss) 20.3 ms, warm min 18.7 ms, warm avg 19.0 ms
 ALL PASS
 
 $ bash bin/test_show_image.sh
@@ -158,4 +160,14 @@ no escape-sequence notifications (osascript only), and uses `xterm-256color` so 
   Terminal.app profiles with a per-profile font that differs from the "Default Window Settings" profile
   are not considered.
 - `show-image` inside tmux: `TC_IMAGES=none` → chafa/Quick Look, never kitty passthrough.
+- `show-image --window` in Ghostty runs through `/bin/sh -c` in a GUI-launched environment, so `python3`
+  resolves to `/usr/bin/python3` (Command Line Tools shim) rather than the login shell's python.org 3.12.
+  The code is stdlib 3.9+, so this should work, but it was not exercised.
+- `termcap.py` ignores `LC_CTYPE` whenever `sys.flags.utf8_mode` is on; a user who sets `PYTHONUTF8=1`
+  *and* only `LC_CTYPE` (no `LANG`/`LC_ALL`) would get `TC_UNICODE` 1 from bash and 0 from Python.
+- Terminal.app "no inline images" rests on `strings` finding no kitty/iTerm2 protocol markers in the
+  Tahoe binary; "Split Pane shows one session" is from memory and marked unverified in the README.
+- Git: `lib/` and `bin/` were already committed once by someone else during the build; the final
+  `termcap.py` (LC_CTYPE fix), `test_termcap.sh` (`set -eu` rows) and `docs/terminals/` postdate that
+  commit. Nothing was committed by this agent.
 - Off macOS: no `sips`, so only PNGs render inline and dimensions come from the PNG header.

@@ -11,11 +11,11 @@ Terminal.app 2.15 (build 470.2) and Ghostty 1.3.1 unless marked *unverified*.
 | Capability | Terminal.app (macOS 26 Tahoe) | Ghostty 1.3.1 |
 |---|---|---|
 | 24-bit colour | Yes since Tahoe: Terminal 2.15, `TERM_PROGRAM_VERSION` >= 464 ([termstandard/colors #69](https://github.com/termstandard/colors/issues/69), [Wikipedia: 2.15 (464), 2025-09-15](https://en.wikipedia.org/wiki/Terminal_(macOS)), [MacRumors, WWDC25](https://www.macrumors.com/2025/06/16/apples-terminal-app-macos-tahoe/)). Sequoia and older (455.x and below): no. | Yes |
-| Inline images | No inline-image protocol. `show-image` uses `chafa` (block art) or Quick Look. | Kitty graphics protocol (`image-storage-limit`, default 320 MB per screen). `show-image` draws inline. |
+| Inline images | None found: the Terminal binary contains no kitty (`ESC _ G`) or iTerm2 (`1337;File`) protocol strings (`strings`), so treated as unsupported. `show-image` uses `chafa` (block art) or Quick Look. | Kitty graphics protocol (`image-storage-limit`, default 320 MB per screen). `show-image` draws inline. |
 | Desktop notifications | No escape-sequence notifications (Claude Code's own desktop notification covers only Ghostty, Kitty, iTerm2). Our `notify` mod uses `osascript` on every macOS terminal. | OSC 9 / OSC 777 (`desktop-notifications = true` default) plus `osascript`. |
 | Shift+Enter = newline in Claude Code | "Works without setup" (Claude Code docs table). | "Works without setup" (kitty keyboard protocol). See `keybindings.md`. |
 | Option+Enter / Option+P | Needs "Use Option as Meta key": already ON in the "Clear Dark" profile. | `macos-option-as-alt`; default is `true` only for U.S. keyboard layouts. |
-| Splits | Tabs and windows only; View > Split Pane shows the same session twice. `show-image --window` opens a new window. | Real splits (`new_split:right` on Cmd+D by default; scriptable via AppleScript `split`). `show-image --window` opens a split. |
+| Splits | No independent split shells: View > Split Pane divides one session's view (*unverified* on Tahoe). `show-image --window` opens a new window. | Real splits (`new_split:right` on Cmd+D by default; scriptable via AppleScript `split`). `show-image --window` opens a split. |
 | OSC 8 hyperlinks | *unverified* (no documentation found; no evidence of support). | Yes (`link-previews = osc8` option, since 1.2.0). |
 | Nerd Font glyphs | Only if the profile font is a Nerd Font. "Clear Dark" currently uses JetBrainsMono Nerd Font Mono (`JetBrainsMonoNFM-Regular`), so `TC_NERDFONT=1`. | Only if `font-family` names a Nerd Font in the config; with no config `TC_NERDFONT=0` and mods use plain Unicode. Ghostty's bundled symbol fallback: *unverified*. |
 | `TERM` | `xterm-256color` | `xterm-ghostty` (terminfo ships inside Ghostty.app; see `ssh.md`) |
@@ -56,14 +56,21 @@ does not exist and the Application Support file exists but is empty, so Ghostty 
 Suggested file (every line optional; defaults noted):
 
 ```
-# ~/.config/ghostty/config.ghostty
-font-family = JetBrainsMono Nerd Font Mono      # as `ghostty +list-fonts` prints it; enables TC_NERDFONT=1
-macos-option-as-alt = true                       # default depends on keyboard layout; explicit = Option+Enter always works
-shell-integration = zsh                          # default `detect` works too
-shell-integration-features = cursor,no-sudo,title,ssh-env,ssh-terminfo,path   # default has no-ssh-env,no-ssh-terminfo; see ssh.md
-desktop-notifications = true                     # default
-window-save-state = always                       # default `default`; values: default | never | always
-keybind = super+d=new_split:right                # already the default; change the key here if you prefer another
+# ~/.config/ghostty/config.ghostty  (Ghostty docs: comments "are only valid on their own line", so never append one to a value)
+# family name exactly as `ghostty +list-fonts` prints it; makes TC_NERDFONT=1
+font-family = JetBrainsMono Nerd Font Mono
+# default depends on keyboard layout; explicit true = Option+Enter / Option+P always work
+macos-option-as-alt = true
+# default `detect` works too
+shell-integration = zsh
+# default has no-ssh-env,no-ssh-terminfo; see ssh.md
+shell-integration-features = cursor,no-sudo,title,ssh-env,ssh-terminfo,path
+# default
+desktop-notifications = true
+# default `default`; values: default | never | always
+window-save-state = always
+# already the default binding; change the key here if you prefer another
+keybind = super+d=new_split:right
 ```
 
 Reload with **Cmd+Shift+,** (default `reload_config` keybind) or `ghostty +edit-config` then reload.

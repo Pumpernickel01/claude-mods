@@ -61,6 +61,13 @@ check unknown          plain "unknown 0 none $N 0 0"        TERM=xterm LANG=C
 check unknown_colorterm plain "unknown 1 none $N 0 1"       TERM=foot COLORTERM=truecolor $U
 check empty_env        plain "unknown 0 none $N 0 0"
 
+# sourcing under `set -eu` (how hooks run) must not abort: cache miss, then cache hit
+rm -f "$T/nerd/.cache/claude-mods/termcap/apple_font"
+for i in miss hit; do
+  if env -i HOME="$T/nerd" PATH="$PATH" TERM_PROGRAM=Apple_Terminal TERM_PROGRAM_VERSION=470.2 /bin/bash -c 'set -eu; . "$1/termcap.sh"; echo ok' bash "$LIB" >/dev/null 2>&1 \
+     && env -i HOME="$T/plain" PATH="$PATH" TERM_PROGRAM=ghostty /bin/bash -c 'set -eu; . "$1/termcap.sh"; echo ok' bash "$LIB" >/dev/null 2>&1; then
+    echo "ok   set -eu sourcing (cache $i)"; else echo "FAIL set -eu sourcing (cache $i)"; fail=1; fi
+done
 # cache: written under HOME, keyed by plist mtime, mode 0700 dir
 c="$T/nerd/.cache/claude-mods/termcap/apple_font"
 if [ -f "$c" ] && grep -q 'JetBrainsMonoNFM-Regular' "$c"; then echo "ok   cache file $(cat "$c")"; else echo "FAIL cache file missing"; fail=1; fi

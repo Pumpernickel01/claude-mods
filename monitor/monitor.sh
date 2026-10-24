@@ -44,7 +44,9 @@ do_open() {
 
 do_close() {
   pid="$(cat "$PID_FILE" 2>/dev/null)"
-  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; echo "monitor stopped (pid $pid)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null; echo "monitor stopped (pid $pid)"
+    i=0; while kill -0 "$pid" 2>/dev/null && [ $i -lt 30 ]; do sleep 0.1; i=$((i+1)); done  # let it exit before the window closes
   else echo "monitor not running"; fi
   rm -f "$PID_FILE"
   [ -f "$META" ] || return 0

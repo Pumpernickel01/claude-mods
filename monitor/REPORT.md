@@ -161,7 +161,7 @@ The TUI test asserts: 4 table rows (main + 3 agents: one running, one done showi
 - `uv` (present). First `open` downloads Textual once (network).
 - macOS Automation permission: on first `open`, allow your terminal to control "Ghostty" or "Terminal" (dialog text in README). Cannot be pre-granted from a script.
 - Nice to have via Homebrew: `tmux` (then the monitor is a pane of the same window in any terminal).
-- End-to-end check in a real Terminal.app and Ghostty window (orchestrator): the exact Ghostty `split` behaviour and the Terminal.app bounds maths were compile-checked, not executed.
+- End-to-end check in a real Terminal.app and Ghostty window (orchestrator): the exact Ghostty `split` behaviour and the Terminal.app bounds maths were compile-checked, not executed. `osacompile` checks terminology, not that a property sits on the right class (it accepted `number of columns of <window>`; Terminal.sdef puts it on `tab`, fixed to `selected tab of mainWin` after reading the sdef). Unverified until a real run: that Ghostty's `new surface configuration` record accepts `set command of`; the script retries with a record literal `{command:cmd, wait after command:false}` (also compiles) before falling back to `new window`.
 
 ## Terminal.app vs Ghostty differences
 

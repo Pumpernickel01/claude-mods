@@ -9,7 +9,7 @@ on run argv
   tell application "Terminal"
     set mainWin to front window
     set {l, t, r, b} to bounds of mainWin
-    set pxPerCol to (r - l) / (number of columns of mainWin)
+    set pxPerCol to (r - l) / (number of columns of selected tab of mainWin)
     if (scrRight - r) < 60 * pxPerCol then
       set r to scrLeft + ((scrRight - scrLeft) div 2)
       set bounds of mainWin to {scrLeft, t, r, b}
