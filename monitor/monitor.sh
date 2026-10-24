@@ -33,7 +33,8 @@ do_open() {
     *)
       # geometry of the screen holding the front Terminal window (not the main screen: multi-display)
       win="$(osascript -e 'tell application "Terminal" to get bounds of front window' 2>/dev/null | tr -d ',')" || win=""
-      scr="$(osascript -l JavaScript "$AS/screen.js" $win)" || return 1
+      case "$win" in *[!0-9\ -]*) win="" ;; esac   # digits, spaces, minus only: never an option or glob
+      set -f; scr="$(osascript -l JavaScript "$AS/screen.js" $win)" || { set +f; return 1; }; set +f
       set -- $scr; [ $# -eq 4 ] || { echo "monitor: could not read the screen size"; return 1; }
       id="$(osascript "$AS/terminal_open.applescript" "$CMD; exit" "$1" "$2" "$3" "$4")" || return 1
       backend=terminal; msg="Terminal.app window $id"
