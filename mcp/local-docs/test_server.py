@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 sys.dont_write_bytecode = True
@@ -130,6 +131,16 @@ class LocalDocsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "path outside DOCS_DIR"):
             server.read_doc("hosts.txt")
 
+    def test_unsupported_extension_refused(self):
+        with self.assertRaisesRegex(ValueError, "unsupported file type"):
+            server.read_doc("secret.env")
+
+    def test_pdf_without_pdftotext(self):
+        from unittest import mock
+        with mock.patch("server.shutil.which", return_value=None):
+            with self.assertRaisesRegex(ValueError, "brew install poppler"):
+                server._extract(os.path.join(DOCS, "sheet.pdf"))
+
     def test_missing_file(self):
         with self.assertRaisesRegex(ValueError, "no such document"):
             server.read_doc("nope.md")
@@ -152,10 +163,25 @@ class LocalDocsTests(unittest.TestCase):
             {"jsonrpc": "2.0", "method": "notifications/initialized"},
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
         ]
-        r = subprocess.run([sys.executable, os.path.join(HERE, "server.py")],
-                           input="".join(json.dumps(m) + "\n" for m in msgs),
-                           capture_output=True, text=True, timeout=20, env=dict(os.environ))
-        by_id = {m.get("id"): m for m in (json.loads(l) for l in r.stdout.splitlines() if l.strip())}
+        # read the answers before closing stdin: EOF cancels in-flight handlers
+        p = subprocess.Popen([sys.executable, os.path.join(HERE, "server.py")], stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env=dict(os.environ))
+        killer = threading.Timer(20, p.kill)
+        killer.start()
+        by_id = {}
+        try:
+            p.stdin.write("".join(json.dumps(m) + "\n" for m in msgs))
+            p.stdin.flush()
+            while 2 not in by_id:
+                line = p.stdout.readline()
+                self.assertTrue(line, "server exited or timed out before answering")
+                m = json.loads(line)
+                by_id[m.get("id")] = m
+        finally:
+            killer.cancel()
+            p.stdin.close()
+            p.stdout.close()
+            p.wait(timeout=10)
         self.assertEqual(by_id[1]["result"]["serverInfo"]["name"], "local-docs")
         self.assertEqual(sorted(t["name"] for t in by_id[2]["result"]["tools"]), ["list_docs", "read_doc", "search"])
 

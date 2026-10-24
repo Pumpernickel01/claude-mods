@@ -26,17 +26,35 @@ test_status_reports_stub_error_and_closes_port (test_server.RealModePlumbing.tes
 test_stub_surfaces_as_tool_error (test_server.RealModePlumbing.test_stub_surfaces_as_tool_error) ... ok
 test_initialize_and_tools_list (test_server.Stdio.test_initialize_and_tools_list) ... ok
 
-Ran 8 tests in 0.201s
+Ran 8 tests in 0.171s
 OK
 ```
-Hand-written JSON-RPC `initialize` + `notifications/initialized` + `tools/list` over stdio (python subprocess, 10 s timeout, `SCANNER_MCP_REAL` unset):
+Hand-written JSON-RPC `initialize` + `notifications/initialized` + `tools/list` over stdio (python subprocess, 10 s timeout, `SCANNER_MCP_REAL` unset). Literal output of the `Stdio` test's print:
+```
+stdio tools/list -> [
+ {
+  "name": "get_status",
+  "description": "Reader status. mode is \"mock\" unless real mode is fully enabled; then\n`reason` says what is missing. In real mode a failed device query is\nreported in last_error instead of raising."
+ },
+ {
+  "name": "read_config",
+  "description": "Current reader settings (read-only; there is no set_config)."
+ },
+ {
+  "name": "scan",
+  "description": "Inventory tags for duration_ms (capped at 10000) returning at most max_tags."
+ }
+]
+```
+Same probe, standalone, printing `serverInfo` and each tool's input-schema property names:
 ```
 initialize -> {"name": "scanner", "version": "1.30.0"}
-tools/list -> [
- {"name": "get_status",  "description": "Reader status. mode is \"mock\" unless real mode is fully enabled; then `reason` says what is missing. In real mode a failed device query is reported in last_error instead of raising."},
- {"name": "read_config", "description": "Current reader settings (read-only; there is no set_config)."},
- {"name": "scan",        "description": "Inventory tags for duration_ms (capped at 10000) returning at most max_tags.", "inputSchema.properties": ["duration_ms", "max_tags"]}
-]
+tools/list -> [["get_status", []], ["read_config", []], ["scan", ["duration_ms", "max_tags"]]]
+```
+Cold-path check the way Claude Code starts it (`python server.py`, `SCANNER_MCP_REAL=1`, `HOME` pointed at a temp dir whose `.config/claude-mods/scanner.json` names `/dev/cu.does-not-exist`), `tools/call` over stdio; proves the lazy `import transport` resolves and a real pyserial open failure is reported, no hardware involved:
+```
+tools/call id=2 isError=False -> {"mode": "real", "device": "/dev/cu.does-not-exist", "connected": false, "firmware": "unknown", "battery_pct": null, "last_error": "SerialException: [Errno 2] could not open port /dev/cu.does-not-exist: [Errno 2] No such file or directory: '/dev/cu.does-not-exist'"}
+tools/call id=3 isError=True -> Error executing tool scan: [Errno 2] could not open port /dev/cu.does-not-exist: [Errno 2] No such file or directory: '/dev/cu.does-not-exist'
 ```
 Env overrides: none needed (no terminal output). Real hardware was never touched; real-mode paths were exercised only against `FakeSerial`.
 

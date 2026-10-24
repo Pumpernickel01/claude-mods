@@ -129,3 +129,11 @@ ALLOW security list-keychains
 ALLOW security verify-cert -c cert.pem
 ALLOW security find-certificate -a
 ALLOW security authorizationdb read system.login.console
+BLOCK bash -lc "rm -rf /"
+BLOCK sh -euc 'cat .env'
+BLOCK cat .env*
+BLOCK cat .env.*
+BLOCK cat ~/.ssh/id_*
+BLOCK cp *.pem /tmp/
+ALLOW cat .env.example*
+ALLOW bash -lc "ls -la"

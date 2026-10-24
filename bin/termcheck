@@ -1,0 +1,25 @@
+#!/bin/bash
+# termcheck: print what this terminal can render (truecolor, 256 colours, box drawing, blocks,
+# symbols, Nerd Font glyphs, emoji) plus the lib/termcap.sh verdict. Pure bash 3.2 + printf.
+ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+. "$ROOT/lib/termcap.sh"
+
+printf 'truecolor   '
+i=0
+while [ "$i" -lt 64 ]; do printf '\033[48;2;%d;%d;%dm ' "$((255 - i * 4))" "$((i * 4))" "$((128 + i))"; i=$((i + 1)); done
+printf '\033[0m  smooth gradient = 24-bit; visible bands = 256-colour fallback\n'
+printf '256-colour  '
+i=16
+while [ "$i" -lt 52 ]; do printf '\033[48;5;%dm  ' "$i"; i=$((i + 1)); done
+printf '\033[0m\n'
+printf 'box drawing ┌─┐│└┘├┤┬┴┼  ╭╮╰╯  ═║╔╗╚╝\n'
+printf 'blocks      ▁▂▃▄▅▆▇█  ░▒▓  ▌▐■□\n'
+printf 'symbols     ✓ ✗ ⚠ ● ○ ⎇ → ⇒ … • ✔ ✘\n'
+# U+E0A0 (branch), U+F09B (github), U+E0B0 (powerline arrow): outside any normal font
+printf 'nerd font   \xee\x82\xa0 \xef\x82\x9b \xee\x82\xb0   <- if you see boxes or blanks here you have no Nerd Font\n'
+printf 'emoji       🚀 ✅ 🎉 🐛 ⏳\n'
+printf 'styles      \033[1mbold\033[0m \033[3mitalic\033[0m \033[4munderline\033[0m \033[2mdim\033[0m\n'
+printf '\ntermcap     TC_TERMINAL=%s TC_TRUECOLOR=%s TC_IMAGES=%s TC_NOTIFY=%s TC_NERDFONT=%s TC_UNICODE=%s\n' \
+  "$TC_TERMINAL" "$TC_TRUECOLOR" "$TC_IMAGES" "$TC_NOTIFY" "$TC_NERDFONT" "$TC_UNICODE"
+printf 'env         TERM_PROGRAM=%s TERM_PROGRAM_VERSION=%s TERM=%s COLORTERM=%s\n' \
+  "${TERM_PROGRAM:-}" "${TERM_PROGRAM_VERSION:-}" "${TERM:-}" "${COLORTERM:-}"

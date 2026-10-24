@@ -43,6 +43,7 @@ ok   (a) Apple_Terminal 30%: 256-colour only, green, git:main● wt, bar, cost, 
 ok   (a) colour switches: 60 green, 65 yellow, 80 yellow, 85 red
 ok   (a) null used_percentage renders 'ctx –' without a bar
 ok   (a) clean repo ○, non-repo shows no git segment
+ok   (a) detached HEAD falls back to the short SHA
 ok   (b) ghostty: 24-bit SGR, green/yellow/red at 30/65/85
 ok   (b) NERD_FONT=1 uses U+E0A0 branch and U+F2DB model glyphs
 ok   (c) LANG=C falls back to * - # . and 'ctx -'
@@ -57,7 +58,7 @@ all tests passed
 exit=0
 
 $ TERM_PROGRAM=ghostty TERM=xterm-ghostty COLORTERM=truecolor /bin/bash test.sh
-(same 13 lines)
+(same 12 ok lines)
      cold git repo: p50 42.0 ms  p95 42.6 ms
      cached: p50 23.2 ms  p95 23.7 ms
 ok   p95 < 100 ms (cold and cached)
@@ -100,7 +101,12 @@ none. The orchestrator must add the `statusLine` snippet above to `~/.claude/set
 ## Known limitations
 - Untracked files do not count as dirty (`--untracked-files` skipped for speed, per spec).
 - Git state is up to 3 s stale (cache); a timeout result (`None`) is cached too, so a repo where
-  git takes > 50 ms shows no git segment at all rather than a slow prompt.
+  git takes > 50 ms shows no git segment at all rather than a slow prompt. Because
+  `GIT_OPTIONAL_LOCKS=0` stops git from writing back a refreshed index, a repo whose index needs a
+  stat refresh pays that cost on every run, so the segment can stay absent until something else
+  (e.g. `git status`) refreshes the index.
+- The "cold" timing is a one-file temp repo: it measures cache-miss overhead (3 git spawns), not a
+  large repo's `git diff` cost.
 - Dirty detection treats any non-zero `git diff --quiet` exit as dirty, including errors.
 - `COLUMNS` width accounting counts code points; all shipped glyphs are single-cell, but the Nerd
   Font glyphs may render wider in some fonts.

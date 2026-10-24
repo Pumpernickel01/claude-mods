@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "scanner": {
+      "command": "uv",
+      "args": ["run", "--quiet", "--with", "mcp>=1.2,<2", "--with", "pyserial>=3.5,<4", "python", "${CLAUDE_PLUGIN_ROOT}/mcp/scanner/server.py"]
+    },
+    "local-docs": {
+      "command": "uv",
+      "args": ["run", "--quiet", "--with", "mcp>=1.10,<2", "python", "${CLAUDE_PLUGIN_ROOT}/mcp/local-docs/server.py"],
+      "env": { "DOCS_DIR": "${DOCS_DIR:-~/Documents/datasheets}" }
+    },
+    "db-inspector": {
+      "command": "uv",
+      "args": ["run", "--quiet", "--with", "mcp>=1.2,<2", "--with", "psycopg[binary]>=3.1,<4", "python", "${CLAUDE_PLUGIN_ROOT}/mcp/db-inspector/server.py"]
+    }
+  }
+}

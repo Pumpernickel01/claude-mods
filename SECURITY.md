@@ -96,7 +96,23 @@ be secure at the moment of use.
   fetches over HTTPS/SSH from the user's own repo; verify signatures with
   `git log --show-signature` after cloning.
 
-## 4. If you find a violation
+## 4. Accepted trade-offs (reviewed, kept on purpose)
+
+- **test-gate runs the repository's own test command** (`npm test`,
+  `make test`, ...). That is the feature the user asked for, and it means a
+  malicious repo can run code when Claude stops. Mitigations: Claude Code
+  only runs hooks after the workspace-trust dialog is accepted; the gate
+  runs only when the tree is dirty; `CLAUDE_MODS_SKIP_TESTS=1` disables it
+  per project. Do not open untrusted repos with this plugin enabled.
+- **command-guard fails closed**: if the guard itself crashes, every Bash
+  call is denied with a message naming `CLAUDE_MODS_DISABLE=command-guard`.
+  Chosen over fail-open because the guard exists to protect secrets.
+- **session-context injects repo metadata** (branch, paths, commit
+  subjects) into Claude's context. It is control-character-stripped, length
+  capped and fenced as untrusted data; a hostile commit subject can still
+  try to look like an instruction. Same exposure as Claude's own `git log`.
+
+## 5. If you find a violation
 
 Fix it in your own folder, note it in REPORT.md under "Security notes". If it
 is in a shared file, report it to the orchestrator; do not edit the shared

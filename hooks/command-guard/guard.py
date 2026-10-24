@@ -85,6 +85,8 @@ def strip_prefix(seg):
 
 def is_secret(tok):
     p = os.path.expandvars(os.path.expanduser(tok.rsplit("@", 1)[-1]))
+    # shortcut: globs are judged by their literal part (".env*" -> ".env"), not expanded against cwd
+    p = re.sub(r"[*?\[\]{}]", "", p).rstrip(".")
     return bool(SECRET.search(p)) or p == HOME + "/.npmrc"
 
 
@@ -117,10 +119,12 @@ def check(cmd, cwd):
         if not seg:
             continue
         name, args = os.path.basename(seg[0]), seg[1:]
-        if name in SHELLS and "-c" in args:
-            hit = check(args[args.index("-c") + 1], cwd)
-            if hit:
-                return hit
+        if name in SHELLS:  # bash -c, bash -lc, sh -euc ...: recurse into the nested command
+            for i, a in enumerate(args[:-1]):
+                if re.fullmatch(r"-[a-zA-Z]*c[a-zA-Z]*", a):
+                    hit = check(args[i + 1], cwd)
+                    if hit:
+                        return hit
         if name == "eval":
             hit = check(" ".join(args), cwd)
             if hit:

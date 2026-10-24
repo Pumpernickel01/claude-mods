@@ -33,6 +33,13 @@ REJECTED = [
     "PRAGMA shrink_memory",
     "",
     "SET search_path = x",
+    # function families escaping the plain keyword list (CTE, subquery, siblings)
+    "WITH f AS (SELECT pg_read_binary_file('/etc/passwd') AS t) SELECT * FROM f",
+    "SELECT * FROM (SELECT pg_ls_waldir()) s",
+    "SELECT lo_get(1)",
+    "SELECT pg_stat_file('/etc/hosts')",
+    "SELECT current_setting( 'ldap_password' )",
+    "SELECT pg_execute_server_program('id')",
 ]
 
 
@@ -68,10 +75,19 @@ class Postgres(unittest.TestCase):
         self.assertIs(kw["autocommit"], False)
         self.assertIn("default_transaction_read_only=on", kw["options"])
         self.assertIn("statement_timeout=10000", kw["options"])
+        self.assertEqual(kw["connect_timeout"], 5)
 
     def test_redact(self):
         self.assertNotIn("s3cret", server.redact(self.URL))
         self.assertIn("alice:***@db.example.invalid", server.redact(self.URL))
+
+    def test_connection_error_never_echoes_dsn(self):
+        url = "postgresql://alice:s3cret@localhost:1/app"  # nothing listens on port 1: refused at once, offline
+        with self.assertRaises(ConnectionError) as cm:
+            server.connect_pg(url)
+        msg = str(cm.exception)
+        self.assertNotIn("s3cret", msg); self.assertNotIn(url, msg); self.assertIsNone(cm.exception.__cause__)
+        self.assertEqual(msg, "connection to postgresql://alice:***@localhost:1/app failed: OperationalError")
 
     @unittest.skipUnless(os.environ.get("DB_INSPECTOR_TEST_PG_URL"), "DB_INSPECTOR_TEST_PG_URL not set")
     def test_live(self):
@@ -153,6 +169,7 @@ class Sqlite(unittest.TestCase):
         self.assertEqual(d["row_count"], 300)
         s = server.sample_rows("users", 1)
         self.assertEqual((s["columns"], s["rows"], s["truncated"]), (["id", "email"], [[1, "a@x"]], True))
+        self.assertEqual(server.query("SELECT email FROM users WHERE email LIKE '%b%'")["rows"], [["b@x"]])
         q = server.query("SELECT email FROM users WHERE id = 2")
         self.assertEqual(q["rows"], [["b@x"]]); self.assertFalse(q["truncated"]); self.assertIn("elapsed_ms", q)
         with self.assertRaises(ValueError):

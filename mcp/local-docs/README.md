@@ -59,6 +59,8 @@ shows it as failed; removing the entry is the clean way.
   the realpath of `DOCS_DIR`; `..` components, absolute paths and symlinks that
   point outside the folder are refused with `path outside DOCS_DIR`.
 - `os.walk` does not follow symlinked directories.
+- Only the supported extensions are ever read; a `.env` or `.key` inside the
+  folder is refused by `read_doc` and skipped by listing/search.
 - Output 50 KB per call; search time-boxed to 10 s and 50 MB of text; `pdftotext`
   / `pdfinfo` run with a subprocess timeout.
 - No network, no secrets read, no telemetry.

@@ -53,4 +53,27 @@ out="$(printf '' | python3 "$HOOK")"; rc=$?
 out="$(printf 'not json' | python3 "$HOOK")"; rc=$?
 [ "$rc" = 0 ] && [ -z "$out" ] && ok "garbage stdin exits 0 quietly" || bad "garbage stdin (rc=$rc)"
 
+# Bash: test-writer may run tests but not write files or history
+bash_case() {  # <allow|deny> <agent> <command>
+  out="$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[1],"hook_event_name":"PreToolUse","agent_type":sys.argv[2],"tool_name":"Bash","tool_input":{"command":sys.argv[3]}}))' "$T/proj" "$2" "$3" | python3 "$HOOK")"; rc=$?
+  case "$1" in
+    allow) [ "$rc" = 0 ] && [ -z "$out" ] && ok "bash allow: $3" || bad "bash allow: $3 (rc=$rc out=$out)" ;;
+    deny)  [ "$rc" = 0 ] && [ "${out#*permissionDecision\":\"deny}" != "$out" ] && ok "bash deny: $3" || bad "bash deny: $3 (rc=$rc out=$out)" ;;
+  esac
+}
+bash_case allow test-writer 'npm test 2>&1 | tail -20'
+bash_case allow test-writer 'python3 -m pytest -q tests/ >&2'
+bash_case allow test-writer 'go test ./... && echo ok'
+bash_case allow test-writer 'git status --short; git diff'
+bash_case deny  test-writer 'cat > src/x.py <<EOF
+x
+EOF'
+bash_case deny  test-writer 'echo hi >> src/x.py'
+bash_case deny  test-writer 'sed -i "" "s/a/b/" src/x.py'
+bash_case deny  test-writer 'python3 -c "open(\"src/x.py\",\"w\").write(\"x\")"'
+bash_case deny  test-writer 'git commit -m "x"'
+bash_case deny  test-writer 'cp tests/a.py src/a.py'
+bash_case deny  mods:test-writer 'npm install left-pad'
+bash_case allow general-purpose 'echo hi > src/x.py'
+
 exit $fail

@@ -1,0 +1,3 @@
+#!/bin/bash
+# show-image [--inline|--window] <image>  — thin wrapper; the logic is lib/show_image.py.
+exec python3 "$(cd "$(dirname "$0")/.." && pwd)/lib/show_image.py" "$@"

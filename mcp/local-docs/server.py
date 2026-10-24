@@ -80,7 +80,7 @@ def _extract(real: str) -> str:
         r = subprocess.run(["pdftotext", "-layout", real, "-"], capture_output=True, timeout=60)
         if r.returncode:
             raise ValueError(f"pdftotext failed: {r.stderr.decode(errors='replace').strip()}")
-        return r.stdout.decode("utf-8", errors="replace").rstrip("\f")  # pdftotext ends with a stray \f
+        return r.stdout.decode("utf-8", errors="replace").removesuffix("\f")  # pdftotext ends with one stray \f
     with open(real, "rb") as f:
         text = f.read().decode("utf-8", errors="replace")
     if real.lower().endswith(".html"):
@@ -176,6 +176,8 @@ def read_doc(path: str, page: int | None = None, start_line: int = 1, max_lines:
     """Read a slice of a document (path relative to DOCS_DIR). PDFs: give page (1-based) to read one page;
     start_line/max_lines slice the lines of that page (or of the whole file)."""
     real = _resolve(path)
+    if not real.lower().endswith(EXTS):
+        raise ValueError("unsupported file type")
     if not os.path.isfile(real):
         raise ValueError(f"no such document: {path}")
     pages = _pages(real)

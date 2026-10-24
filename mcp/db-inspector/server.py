@@ -38,6 +38,12 @@ BLOCKED = re.compile(
     r"|set_config|pg_terminate_backend|pg_cancel_backend|pg_reload_conf|load_extension)\b",
     re.I,
 )
+# Identifier FAMILIES (prefix match), so a renamed/sibling function cannot slip past the keyword list.
+BLOCKED_FAMILIES = re.compile(
+    r"\b(pg_read_|pg_stat_file|pg_ls_|pg_logdir_ls|pg_current_logfile|pg_file_|lo_(get|import|export|put|unlink)"
+    r"|dblink|pg_execute_server_program|pg_reload_conf|set_config|current_setting\s*\(\s*'[^']*(password|passfile))",
+    re.I,
+)
 # Read-only pragmas; the setter form (PRAGMA x = v) is rejected regardless of name.
 PRAGMA_OK = {
     "table_info", "table_xinfo", "table_list", "index_list", "index_info", "index_xinfo",
@@ -91,9 +97,9 @@ def check_sql(sql, engine):
     first = first.group(0).upper() if first else ""
     if first not in ALLOWED_FIRST:
         raise ValueError(f"statement must start with one of {sorted(ALLOWED_FIRST)}, got {first or clean[:20]!r}")
-    m = BLOCKED.search(clean)
+    m = BLOCKED.search(clean) or BLOCKED_FAMILIES.search(clean)
     if m:
-        raise ValueError(f"read-only: keyword {m.group(0)!r} is not allowed")
+        raise ValueError(f"read-only: {m.group(0).strip()!r} is not allowed")
     if first == "PRAGMA":
         pm = re.match(r"PRAGMA\s+(?:\w+\.)?(\w+)\s*(\(|=|$)", clean, re.I | re.S)
         name = pm.group(1).lower() if pm else ""
@@ -195,6 +201,7 @@ def pg_connect_kwargs(url):
     return {
         "conninfo": url,
         "autocommit": False,
+        "connect_timeout": 5,  # an unreachable host must not hang the tool call for the OS TCP timeout
         "options": f"-c default_transaction_read_only=on -c statement_timeout={TIMEOUT_S * 1000}",
     }
 
@@ -204,8 +211,8 @@ def connect_pg(url):
 
     try:
         conn = psycopg.connect(**pg_connect_kwargs(url))
-    except Exception as e:  # never echo the password
-        raise ConnectionError(redact(str(e)).replace(url, redact(url))) from e
+    except Exception as e:  # driver text can echo the DSN: fixed message, class name only, no chained cause
+        raise ConnectionError(f"connection to {redact(url)} failed: {type(e).__name__}") from None
     conn.read_only = True
     conn.execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
     conn.commit()
@@ -225,7 +232,7 @@ def connect(info=None):
 def run(conn, sql, params=(), max_rows=MAX_ROWS_CAP):
     """Execute inside a transaction that is always rolled back; return (columns, rows, truncated)."""
     try:
-        cur = conn.execute(sql, params)
+        cur = conn.execute(sql, params) if params else conn.execute(sql)  # psycopg parses %s only when params are given
         cols = [d[0] for d in cur.description] if cur.description else []
         rows = cur.fetchmany(max_rows + 1) if cur.description else []
     except sqlite3.OperationalError as e:

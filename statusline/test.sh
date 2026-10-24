@@ -48,6 +48,10 @@ OUT="$(json 30 "$TMP/clean" | apple)"
 OUT="$(json 30 "$TMP/plain" | apple)"
 [[ $OUT != *"git:"* ]] || fail "(a) non-repo showed git: $OUT"
 ok "(a) clean repo ○, non-repo shows no git segment"
+git -c init.defaultBranch=main init -q "$TMP/detached" && git -C "$TMP/detached" -c user.name=t -c user.email=t@t commit -q --allow-empty -m x && git -C "$TMP/detached" checkout -q --detach
+OUT="$(json 30 "$TMP/detached" | apple)"
+[[ $OUT =~ git:[0-9a-f]{7,}○ ]] || fail "(a) detached HEAD should show short SHA: $OUT"
+ok "(a) detached HEAD falls back to the short SHA"
 
 # (b) Ghostty: 24-bit colour, same thresholds
 OUT="$(json 30 "$TMP/dirty" | ghostty)"
