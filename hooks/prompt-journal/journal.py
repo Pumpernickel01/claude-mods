@@ -15,7 +15,9 @@ def main():
         return
     data = json.loads(sys.stdin.read() or "{}")
     prompt = data.get("prompt")
-    if data.get("agent_id") or not isinstance(prompt, str) or not prompt.strip():
+    # subagent hand-backs are relayed to the main session as prompts; they are not the user's words
+    if data.get("agent_id") or not isinstance(prompt, str) or not prompt.strip() \
+            or prompt.lstrip().startswith("<agent-message"):
         return
 
     cwd = data.get("cwd") or os.getcwd()
