@@ -117,7 +117,7 @@ emit(event="tool_start", status="running", tool="Bash", agent_id=..., ...)
 Fixed fields (helper fills `ts`, `session_id`, `agent_id`, `agent_type`, `cwd`
 from the hook stdin if you pass it): `ts` (ISO-8601 UTC), `event`
 (`session_start|agent_start|tool_start|tool_end|agent_stop|session_stop|
-notification`), `status` (`running|done|failed|blocked`), `session_id`,
+session_end|notification`), `status` (`running|done|failed|blocked`), `session_id`,
 `agent_id` (null for main session), `agent_type`, `description`, `tool`,
 `parent_agent_id`, `cost_usd`, `tokens`. Other mods may append; only the
 monitor reads. Nobody rewrites or truncates it (the monitor rotates by size).

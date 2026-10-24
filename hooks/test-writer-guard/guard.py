@@ -14,10 +14,10 @@ AGENTS = ("test-writer", "mods:test-writer")  # bare name and plugin-scoped name
 TEST_DIRS = ("tests", "test", "__tests__", "spec")
 TEST_FILES = ("test_*.py", "*_test.py", "*.test.*", "*.spec.*", "*Tests.swift", "*_test.go")
 
-# Bash allowlist: argv[0] (after env/VAR= prefixes) -> required first argument, or None for any.
+# Bash allowlist: argv[0] (after allowed VAR= prefixes) -> required first argument (str or tuple), None = any.
 RUNNERS = {
     "pytest": None, "jest": None, "vitest": None, "mocha": None, "tox": None, "nox": None,
-    "npm": "test", "pnpm": "test", "yarn": "test", "bun": "test", "npx": None,
+    "npm": "test", "pnpm": "test", "yarn": "test", "bun": "test", "npx": ("jest", "vitest", "mocha"),
     "go": "test", "cargo": "test", "swift": "test", "make": "test", "dotnet": "test",
     "mvn": "test", "gradle": "test", "./gradlew": "test", "ctest": None, "rspec": None,
     "python": "-m", "python3": "-m",           # python -m pytest / unittest only
@@ -25,6 +25,17 @@ RUNNERS = {
 }
 READONLY = {"ls", "cat", "head", "tail", "grep", "rg", "find", "wc", "echo", "pwd", "which",
             "true", "false", "sort", "uniq", "cut", "tr", "diff", "stat", "file", "test", "[", "sleep"}
+# flags that turn a read-only or test command into a write or an exec
+DENY_FLAGS = {
+    "find": {"-exec", "-execdir", "-ok", "-okdir", "-delete", "-fls", "-fprint", "-fprint0", "-fprintf"},
+    "sort": {"-o", "--output"}, "uniq": set(), "rg": {"--pre", "--pre-glob"},
+    "git": {"-c", "--exec-path", "--git-dir", "--work-tree", "-D", "-d", "-M", "-m", "-f", "--force",
+            "--output", "-u", "--set-upstream-to", "--unset-upstream", "--edit-description"},
+    "npx": {"-c", "--call", "-p", "--package", "-y", "--yes"},
+}
+# VAR=value prefixes that cannot change what a command executes (PAGER, GIT_*, DYLD_* etc. can)
+ENV_OK = {"CI", "NODE_ENV", "FORCE_COLOR", "NO_COLOR", "TERM", "LANG", "LC_ALL", "TZ", "COLUMNS",
+          "RUST_BACKTRACE", "RUST_LOG", "DEBUG", "PYTHONDONTWRITEBYTECODE"}
 PREFIX = {"env", "command", "time"}
 
 
@@ -40,13 +51,13 @@ def is_test_path(rel):
     return any(d in TEST_DIRS for d in dirs) or any(fnmatch.fnmatchcase(name, g) for g in TEST_FILES)
 
 
-def bash_problem(cmd):
-    """Return a reason string if the command is not an allowlisted read-only/test command."""
-    s = shlex.shlex(cmd.replace("\n", ";"), posix=True, punctuation_chars=True)
-    s.whitespace_split = True
-    tokens = list(s)  # ValueError on unbalanced quotes -> caller denies
-    if "`" in cmd or "$(" in cmd or "<(" in cmd or ">(" in cmd:
-        return "command substitution is not allowed"
+def segments(line):
+    """Simple commands of one shell line; raises ValueError on redirections, substitutions, bad quotes."""
+    if "`" in line or "$(" in line or "<(" in line or ">(" in line:
+        raise ValueError("command substitution is not allowed")
+    s = shlex.shlex(line, posix=True, punctuation_chars=True)
+    s.whitespace_split, s.commenters = True, ""   # '#' is data; the shell is the only comment parser
+    tokens = list(s)
     segs, cur, i = [], [], 0
     while i < len(tokens):
         t = tokens[i]
@@ -56,21 +67,32 @@ def bash_problem(cmd):
                 i += 2
                 continue
             if ">" in t or "<" in t:
-                return f"redirection {t} is not allowed"
+                raise ValueError(f"redirection {t} is not allowed")
             if cur:
                 segs.append(cur)
             cur = []
         else:
             cur.append(t)
         i += 1
-    if cur:
-        segs.append(cur)
+    return segs + ([cur] if cur else [])
+
+
+def bash_problem(cmd):
+    """Return a reason string if the command is not an allowlisted read-only/test command."""
+    try:
+        segs = [seg for line in cmd.splitlines() for seg in segments(line)]
+    except ValueError as e:
+        return str(e) or "unbalanced quotes"
     for seg in segs:
         while seg and (seg[0] in PREFIX or ("=" in seg[0] and not seg[0].startswith("-"))):
+            if "=" in seg[0] and seg[0].split("=", 1)[0] not in ENV_OK:
+                return f"environment prefix `{seg[0].split('=', 1)[0]}=` is not allowed"
             seg = seg[1:]
         if not seg:
             continue
         name, args = seg[0], seg[1:]
+        if any(a.split("=", 1)[0] in DENY_FLAGS.get(name, ()) for a in args):
+            return f"`{name}` with a write/exec flag is not allowed"
         if name in READONLY:
             continue
         if name not in RUNNERS:
@@ -85,6 +107,8 @@ def bash_problem(cmd):
         elif isinstance(need, tuple):
             if first not in need:
                 return f"`{name} {first}` is not read-only"
+            if first == "branch" and any(not a.startswith("-") for a in args[1:]):
+                return "`git branch <name>` creates a branch"
         elif first != need and not (name in ("npm", "pnpm", "yarn", "bun") and first == "run" and
                                     (args[1:2] or [""])[0].startswith("test")):
             return f"`{name}` may only run its `{need}` script"
