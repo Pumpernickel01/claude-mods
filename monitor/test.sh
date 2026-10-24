@@ -92,5 +92,24 @@ sys.exit(0 if worst < 50 else 1)
 EOF
 [ $? -eq 0 ] && pass=$((pass+1)) || fail=$((fail+1))
 
+echo "# log rotation: parallel writers rotate once and keep the rotated file"
+python3 - "$HERE/../lib" "$TMP/rot/events.jsonl" <<'EOF2' && pass=$((pass+1)) || fail=$((fail+1))
+import os, subprocess, sys
+lib, log = sys.argv[1], sys.argv[2]
+sys.path.insert(0, lib); os.environ["CLAUDE_MODS_EVENT_LOG"] = log
+import events
+os.makedirs(os.path.dirname(log), exist_ok=True)
+with open(log, "wb") as f:
+    f.write(b"x" * (events.ROTATE_BYTES + 1))
+code = "import sys; sys.path.insert(0, sys.argv[1]); import events; events.emit('t', 'done', {'session_id': 's'})"
+env = {**os.environ, "CLAUDE_MODS_EVENT_LOG": log}
+for p in [subprocess.Popen([sys.executable, "-c", code, lib], env=env) for _ in range(8)]:
+    p.wait()
+kept, lines = os.path.getsize(log + ".1"), open(log).read().count("\n")
+ok = kept == events.ROTATE_BYTES + 1 and lines == 8
+print(("ok   - " if ok else "FAIL - ") + f"8 parallel writers: rotated file kept whole ({kept} bytes), {lines} lines in the new log")
+sys.exit(0 if ok else 1)
+EOF2
+
 echo "# $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
