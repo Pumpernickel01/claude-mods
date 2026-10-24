@@ -2,7 +2,7 @@
 // the mouse read, the pane redrawn. What it draws is draw.mjs's.
 import { readFileSync, statSync } from 'node:fs'
 
-import { actionsOf } from './draw.mjs'
+import { actionsOf, clean } from './draw.mjs'
 
 const POLL_MS = 250
 
@@ -30,7 +30,7 @@ export function runViewer({ feedPath, view: first, draw, act }) {
       const stamp = `${mtimeMs}:${size}`
       if (stamp === seen) return
 
-      feed = JSON.parse(readFileSync(feedPath, 'utf8'))
+      feed = JSON.parse(readFileSync(feedPath, 'utf8'), (_key, value) => (typeof value === 'string' ? clean(value) : value))
       seen = stamp
       render()
     } catch {

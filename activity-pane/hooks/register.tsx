@@ -87,15 +87,17 @@ async function apiOf($: EngineInterface) {
 }
 
 async function herdrOf($: EngineInterface, root: string): Promise<Herdr | undefined> {
-  const [isHerdr, pane, bin, tmp] = await Promise.all([
+  const [isHerdr, pane, bin, tmp, home] = await Promise.all([
     $.env.get('HERDR_ENV'),
     $.env.get('HERDR_PANE_ID'),
     $.env.get('HERDR_BIN_PATH'),
     $.env.get('TMPDIR'),
+    $.env.get('HOME'),
   ])
   if (isHerdr !== '1' || pane === undefined || pane === '') return undefined
 
-  return { bin: bin || 'herdr', pane, root, feed: feedPathOf(tmp || '/tmp', pane) }
+  // macOS gives each user a private TMPDIR; without one, ~/.claude rather than the shared /tmp
+  return { bin: bin || 'herdr', pane, root, feed: feedPathOf(tmp || `${home}/.claude/activity`, pane) }
 }
 
 async function herdrRun($: EngineInterface, herdr: Herdr, args: string[]) {

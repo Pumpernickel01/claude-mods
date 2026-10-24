@@ -135,3 +135,13 @@ test('falls back to the Activity pane, saying why, when herdr refuses the split'
   expect(seen.opened).toEqual(['activity'])
   expect(seen.toasts[0]).toMatch(/^The herdr column could not be opened \(herdr pane split: split refused\)/)
 })
+
+test('without a TMPDIR the feed goes under ~/.claude, never the shared /tmp', async ($, on) => {
+  herdr(on)
+  const { TMPDIR: _unset, ...env } = IN_HERDR
+  const seen = session(on, { ...env, HOME: '/Users/me' })
+
+  await $.session.start(START)
+
+  expect(seen.written.at(-1)?.path).toBe('/Users/me/.claude/activity/claude-activity/w0-p1.json')
+})

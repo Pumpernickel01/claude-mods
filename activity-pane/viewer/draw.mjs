@@ -51,6 +51,10 @@ export const fit = (text, cells) => {
   return `${kept}…${' '.repeat(cells - 1 - used)}`
 }
 
+// Control characters (C0 but tab and newline, DEL, C1) as spaces: text from the feed or the guide
+// must never reach the terminal as an escape sequence of its own.
+export const clean = text => String(text).replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, ' ')
+
 const oneLine = text => String(text).replace(/\s+/g, ' ').trim()
 
 // "64k tok", "12.3 KB": an amount short enough for the log's right edge.

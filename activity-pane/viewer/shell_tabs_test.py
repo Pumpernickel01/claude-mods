@@ -74,6 +74,26 @@ class Views(Files):
         self.assertNotIn("Elsewhere", text)
         self.assertIn("agents 0 running / 1 done / 1 failed · tool calls 2", text)
 
+    def test_control_characters_from_the_log_never_reach_the_screen(self):
+        with open(self.log, "a") as f:
+            f.write(rec(8, "agent_start", agent_type="Bad", description="x\x1b]52;c;aGk=\x07y\x9b2J", tool_use_id="t9") + "\n")
+            f.write(rec(9, "agent_start", agent_id="b9b9b9b9", agent_type="Bad") + "\n")
+        agents = self.agents()
+        agents.poll()
+        drawn = "".join(shell_tabs.draw_agents(agents.session(), 12, 140, time.time()))
+        self.assertIn("x ]52;c;aGk= y 2J", drawn)
+        self.assertNotIn("\x07", drawn)
+        self.assertNotIn("\x9b", drawn)
+        self.assertNotIn("\x1b]", drawn)
+
+    def test_only_records_whose_own_session_id_matches_are_read(self):
+        with open(self.log, "a") as f:  # another session's record carrying this session's id nested inside
+            f.write(json.dumps({"ts": "2026-10-24T12:00:09.000Z", "event": "session_start", "session_id": "other",
+                                "extra": {"session_id": SID}}, separators=(",", ":")) + "\n")
+        agents = self.agents()
+        agents.poll()
+        self.assertEqual(list(agents.model.sessions), [SID])
+
     def test_graph_draws_the_spawn_tree(self):
         agents = self.agents()
         agents.poll()

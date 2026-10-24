@@ -43,6 +43,25 @@ test('a web fetch goes to the URL’s host, with what came back', async ($, on) 
   ])
 })
 
+test('a web fetch with userinfo goes to the real host, never tagged local by it', async ($, on) => {
+  const { flows } = setUp(on)
+  await $.session.start(START)
+
+  await $.tool.call({ tool: 'WebFetch', tool_use_id: 'w2', url: 'http://127.0.0.1@evil.example/x?y=1', prompt: '' })
+
+  expect((await flows()).map(flow => [flow.to, flow.tag, flow.what])).toEqual([['evil.example', undefined, 'GET /x?y=1']])
+})
+
+test('a shell command reaching more than five places says how many are not listed', async ($, on) => {
+  const { flows } = setUp(on)
+  await $.session.start(START)
+
+  const hosts = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(name => `https://${name}.example/`)
+  await $.tool.call(bash(`curl ${hosts.join(' ')}`, 'b9'))
+
+  expect((await flows()).map(flow => flow.to)).toEqual(['a.example', 'b.example', 'c.example', 'd.example', 'e.example', '+2 more destinations'])
+})
+
 test('an MCP call names its server, what it sent and what came back', async ($, on) => {
   const { flows } = setUp(on)
   await $.session.start(START)

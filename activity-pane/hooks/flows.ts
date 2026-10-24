@@ -57,6 +57,17 @@ const NET = new Set([
   'ssh', 'sftp', 'mosh', 'telnet', 'nc', 'ncat', 'netcat', 'socat', 'ping', 'ping6', 'traceroute',
   'mtr', 'nmap', 'dig', 'nslookup', 'host', 'ftp', 'curl', 'wget', 'http', 'https', 'xh', 'scp', 'rsync',
 ])
+const parsedUrl = (text: string) => {
+  try {
+    return new URL(text)
+  } catch {
+    return undefined
+  }
+}
+
+// Destination lines one Bash command makes before the "+N more" line.
+const SHOWN = 5
+
 const GIT_REMOTE = new Set(['push', 'pull', 'fetch', 'clone', 'ls-remote'])
 const PREFIX = new Set(['sudo', 'time', 'exec', 'command', 'nohup', 'env'])
 
@@ -69,7 +80,7 @@ export const targetsOf = (command: string): Target[] => {
   const found = new Map<string, Target>()
   const add = (target: Target) => {
     const key = 'host' in target ? target.host : `remote:${target.remote}`
-    if (!found.has(key) && found.size < 5) found.set(key, target)
+    if (!found.has(key)) found.set(key, target)
   }
 
   for (const [, app = ''] of command.matchAll(APP)) add({ host: app, what: 'Apple Events' })
@@ -124,9 +135,10 @@ export const flowsOfTool = (tool: string, input: Record<string, unknown>, ran: R
   }
 
   if (tool === 'WebFetch' && typeof input.url === 'string') {
-    const parsed = /^\w+:\/\/([^/:?#]+)[^/?#]*([^\s]*)/.exec(input.url)
-    const host = parsed?.[1] ?? input.url
-    const draft: Draft = { from: 'WebFetch', to: host, tag: tagOf(host), what: `GET ${parsed?.[2] || '/'}`, down: received, detail: input.url, isFailed }
+    // URL's parser, not a regex: in http://127.0.0.1@evil.com the host is evil.com, not a local address
+    const url = parsedUrl(input.url)
+    const host = url?.hostname.replace(/^\[|\]$/g, '') ?? input.url
+    const draft: Draft = { from: 'WebFetch', to: host, tag: tagOf(host), what: `GET ${url ? url.pathname + url.search : '/'}`, down: received, detail: input.url, isFailed }
 
     return { drafts: [draft], remotes: [] }
   }
@@ -139,7 +151,9 @@ export const flowsOfTool = (tool: string, input: Record<string, unknown>, ran: R
 
   if (tool === 'Bash' && typeof input.command === 'string') {
     const detail = oneLine(input.command)
-    const targets = targetsOf(input.command)
+    // five lines at most, and one saying how many more, so the list never looks complete when it is not
+    const all = targetsOf(input.command)
+    const targets = all.slice(0, SHOWN)
     const drafts: Draft[] = []
     const remotes: { remote: string; what: string; detail: string; isFailed?: true }[] = []
 
@@ -149,6 +163,10 @@ export const flowsOfTool = (tool: string, input: Record<string, unknown>, ran: R
         const tag = target.what === 'Apple Events' ? 'local' : tagOf(target.host)
         drafts.push({ from: 'Bash', to: target.host, tag, what: target.what, detail, isFailed })
       }
+    }
+
+    if (all.length > SHOWN) {
+      drafts.push({ from: 'Bash', to: `+${all.length - SHOWN} more destinations`, what: 'not listed', detail, isFailed })
     }
 
     return { drafts, remotes }

@@ -36,6 +36,8 @@ SHIFT_TAB = b"\x1b[Z"
 HELD_MAX = 8 * 1024 * 1024
 KEYS = re.compile(rb"\x1b\[[<?0-9;]*[A-Za-z~]|\x1bO.|\x1b|.", re.S)
 ALT_SCREEN = re.compile(rb"\x1b\[\?(?:1049|1047|47)([hl])")
+# C0, DEL and C1: text from the log must never reach the terminal as an escape sequence
+CONTROL = re.compile("[\x00-\x1f\x7f-\x9f]")
 
 # Catppuccin Mocha, as the column's other viewers use.
 MOCHA = {"text": "#cdd6f4", "blue": "#89b4fa", "green": "#a6e3a1", "yellow": "#f9e2af", "red": "#f38ba8",
@@ -52,7 +54,7 @@ def line_of(segs, cols):
     """One screen row from (text, color, bold) pieces, cut to `cols` cells."""
     out, left = [], cols
     for text, color, bold in segs:
-        text = text[:max(0, left)]
+        text = CONTROL.sub(" ", text)[:max(0, left)]
         left -= len(text)
         if text and bold:
             text = f"\x1b[1m{text}\x1b[22m"
@@ -229,7 +231,8 @@ class Agents:
                 rec = json.loads(line)
             except ValueError:
                 continue
-            if isinstance(rec, dict):
+            # the byte check above is only a fast path; the parsed field decides
+            if isinstance(rec, dict) and (not self.sid or rec.get("session_id") == self.sid):
                 self.model.ingest(rec)
                 changed = True
         return changed

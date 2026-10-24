@@ -6,6 +6,7 @@ import {
   actionsOf,
   amountOf,
   cellsOf,
+  clean,
   drawFlow,
   drawGuide,
   drawTools,
@@ -202,4 +203,9 @@ test('without a guide file the guide tab says where to write one', () => {
 test('before the feed exists each pane says it is waiting', () => {
   assert.match(plain(drawFlow(undefined, { selected: null, end: null }, 9, 80)[0]), /waiting for Claude…$/)
   assert.match(plain(drawTools(undefined, { end: null }, 5, 80)[0]), /waiting for Claude…$/)
+})
+
+test('clean turns control characters into spaces, so feed text cannot drive the terminal', () => {
+  // OSC 52 (write the clipboard), a cursor move, a C1 CSI, DEL; tab and newline stay
+  assert.equal(clean('a\x1b]52;c;aGk=\x07b\x1b[2Jc\x9b31md\x7fe\tf\ng'), 'a ]52;c;aGk= b [2Jc 31md e\tf\ng')
 })

@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-import { drawFlow, drawGuide, guideLinesOf, moveFlow, scrollGuide } from './draw.mjs'
+import { clean, drawFlow, drawGuide, guideLinesOf, moveFlow, scrollGuide } from './draw.mjs'
 import { runViewer } from './tui.mjs'
 
 const GUIDE_PATH = join(homedir(), '.claude', 'workflow-guide.md')
@@ -14,7 +14,7 @@ const GUIDE_SHOWN = '~/.claude/workflow-guide.md'
 // Read at each draw, so an edit shows at the next redraw; undefined while it does not exist.
 const readGuide = () => {
   try {
-    return readFileSync(GUIDE_PATH, 'utf8')
+    return clean(readFileSync(GUIDE_PATH, 'utf8'))
   } catch {
     return undefined
   }
