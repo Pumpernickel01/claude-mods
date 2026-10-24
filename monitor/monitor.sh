@@ -11,7 +11,9 @@ DIR="$HOME/.claude/agent-monitor"
 PID_FILE="$DIR/monitor.pid"
 META="$DIR/monitor.json"
 AS="$ROOT/monitor/applescript"
-CMD="cd '$ROOT/monitor' && uv run --quiet --no-project --with 'textual>=0.80,<2' python monitor.py"
+# absolute uv path: Ghostty/Terminal run the command with /bin/sh -c, where Homebrew is not on PATH
+UV="$(command -v uv 2>/dev/null || echo uv)"
+CMD="cd '$ROOT/monitor' && '$UV' run --quiet --no-project --with 'textual>=0.80,<2' python monitor.py"
 
 alive() { [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; }
 meta() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))' "$META" "$1" 2>/dev/null; }
