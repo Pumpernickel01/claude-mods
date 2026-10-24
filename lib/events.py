@@ -27,7 +27,10 @@ def rotate():
     same big file would otherwise rename the fresh log over the one just rotated."""
     lock = os.open(LOG_PATH + ".lock", os.O_WRONLY | os.O_CREAT, 0o600)
     try:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return  # another writer is rotating; a hook must never wait on a lock
         # re-checked under the lock: after another writer's rotation the log may not exist yet
         if os.path.isfile(LOG_PATH) and os.path.getsize(LOG_PATH) > ROTATE_BYTES:
             os.replace(LOG_PATH, LOG_PATH + ".1")  # readers see the file shrink and start over at 0

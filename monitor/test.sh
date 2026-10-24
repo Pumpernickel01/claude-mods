@@ -111,5 +111,22 @@ print(("ok   - " if ok else "FAIL - ") + f"8 parallel writers: rotated file kept
 sys.exit(0 if ok else 1)
 EOF2
 
+echo "# log rotation never waits: a held lock is skipped, the record still lands"
+python3 - "$HERE/../lib" "$TMP/held/events.jsonl" <<'EOF2' && pass=$((pass+1)) || fail=$((fail+1))
+import fcntl, os, sys, time
+lib, log = sys.argv[1], sys.argv[2]
+sys.path.insert(0, lib); os.environ["CLAUDE_MODS_EVENT_LOG"] = log
+import events
+os.makedirs(os.path.dirname(log), exist_ok=True)
+with open(log, "wb") as f:
+    f.write(b"x" * (events.ROTATE_BYTES + 1))
+held = os.open(log + ".lock", os.O_WRONLY | os.O_CREAT, 0o600)
+fcntl.flock(held, fcntl.LOCK_EX)
+t0 = time.time(); events.emit("t", "done", {"session_id": "s"}); took = time.time() - t0
+ok = took < 1 and not os.path.exists(log + ".1") and open(log, "rb").read().endswith(b'"session_id":"s","agent_id":null,"agent_type":null,"cwd":null,"transcript_path":null}\n')
+print(("ok   - " if ok else "FAIL - ") + f"emit with the lock held took {took * 1000:.0f} ms, skipped rotating, appended its record")
+sys.exit(0 if ok else 1)
+EOF2
+
 echo "# $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
