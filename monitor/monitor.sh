@@ -31,7 +31,9 @@ do_open() {
       id="$(osascript "$AS/ghostty_open.applescript" "shell:$CMD")" || return 1
       backend=ghostty; msg="Ghostty ${id%%:*} ${id#*:}" ;;
     *)
-      scr="$(osascript -l JavaScript "$AS/screen.js")" || return 1
+      # geometry of the screen holding the front Terminal window (not the main screen: multi-display)
+      win="$(osascript -e 'tell application "Terminal" to get bounds of front window' 2>/dev/null | tr -d ',')" || win=""
+      scr="$(osascript -l JavaScript "$AS/screen.js" $win)" || return 1
       set -- $scr; [ $# -eq 4 ] || { echo "monitor: could not read the screen size"; return 1; }
       id="$(osascript "$AS/terminal_open.applescript" "$CMD; exit" "$1" "$2" "$3" "$4")" || return 1
       backend=terminal; msg="Terminal.app window $id"

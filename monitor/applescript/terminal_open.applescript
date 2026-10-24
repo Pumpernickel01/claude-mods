@@ -14,9 +14,18 @@ on run argv
       set r to scrLeft + ((scrRight - scrLeft) div 2)
       set bounds of mainWin to {scrLeft, t, r, b}
     end if
+    set beforeIds to id of every window
     do script cmd
+    delay 0.3
+    -- the new window is not necessarily frontmost yet: find it by id
     set w to front window
-    set custom title of tab 1 of w to "Claude agents"
+    repeat with cand in windows
+      if beforeIds does not contain (id of cand) then
+        set w to cand
+        exit repeat
+      end if
+    end repeat
+    set custom title of selected tab of w to "Claude agents"
     set bounds of w to {r, t, scrRight, b}
     return id of w
   end tell

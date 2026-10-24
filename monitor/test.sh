@@ -186,7 +186,7 @@ bash "$SH" close >/dev/null; grep -q "^$HERE/applescript/ghostty_close.applescri
 
 out="$(run_sh env TERM_PROGRAM=Apple_Terminal TERM=xterm-256color bash "$SH" open)"
 check "apple_terminal backend" "$out" "monitor opened: Terminal.app window 4242"
-grep -q "^-l JavaScript $HERE/applescript/screen.js$" "$FAKE_LOG" && ok "  screen size via JXA" || bad "  no screen.js call"
+grep -q "^-l JavaScript $HERE/applescript/screen.js" "$FAKE_LOG" && ok "  screen size via JXA" || bad "  no screen.js call"
 grep -q "^$HERE/applescript/terminal_open.applescript cd '.*monitor.py; exit 0 25 1728 1117$" "$FAKE_LOG" && ok "  terminal_open got command + 4 screen numbers" || bad "  terminal_open args: $(cat "$FAKE_LOG")"
 bash "$SH" close >/dev/null; grep -q "^$HERE/applescript/terminal_close.applescript 4242$" "$FAKE_LOG" && ok "  close passes window id" || bad "  close: $(cat "$FAKE_LOG")"
 
