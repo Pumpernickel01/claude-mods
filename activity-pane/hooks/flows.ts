@@ -60,19 +60,20 @@ export const mcpOf = (tool: string) => {
 
 // The whole authority (up to / ? # or a quote), one unit: urlHost takes the host out of it, so a regex can
 // never backtrack into a password and call it the host.
-const URL_AUTH = /\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp):\/\/([^\s/?#'"]+)/gi
+const URL_AUTH = /\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp):\/\/([^\s/?#'"]+)(['"][^\s/?#]*)?/gi // 2: cut by a quote
 
 // The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
-// template placeholder ($, backtick, braces, backslash) anywhere, or when, with no @, what follows the host is
-// not a numeric port: an authority a quote cut short (user:p'ss@host) must not log its username as a host.
-const urlHost = (authority: string) => {
-  if (/[${}`\\]/.test(authority)) return undefined
+// template placeholder ($, backtick, braces, backslash) anywhere, when a quote cut it short with more text behind
+// (an unbalanced TOKEN'x@host), or when, with no @, what follows the host is not a port: an authority cut at
+// user:p must not log its username as a host. An empty port (host:/) is a port.
+const urlHost = (authority: string, cut: boolean) => {
+  if (cut || /[${}`\\]/.test(authority)) return undefined
   const at = authority.lastIndexOf('@')
   const hostport = authority.slice(at + 1)
   const bracket = hostport.startsWith('[') ? hostport.indexOf(']') : -1
   const host = bracket > 0 ? hostport.slice(1, bracket) : hostport.split(':')[0] ?? ''
   const rest = bracket > 0 ? hostport.slice(bracket + 1) : hostport.slice(host.length)
-  if (host === '' || (at === -1 && rest !== '' && !/^:\d+$/.test(rest))) return undefined
+  if (host === '' || (at === -1 && rest !== '' && !/^:\d*$/.test(rest))) return undefined
 
   return host
 }
@@ -99,7 +100,7 @@ const PREFIX = new Set(['sudo', 'time', 'exec', 'command', 'nohup', 'env'])
 
 const isIpv4 = (text: string) => text.split('.').every(octet => Number(octet) <= 255)
 
-const unquote = (token: string) => token.replace(/^['"]|['"]$/g, '')
+const unquote = (token: string) => token.replace(/'([^']*)'|"([^"]*)"/g, (_, a: string | undefined, b) => a ?? b ?? '').replace(/^['"]|['"]$/g, '')
 
 // Each host a shell command reaches, once, with the program that reaches it.
 export const targetsOf = (command: string): Target[] => {
@@ -121,8 +122,8 @@ export const targetsOf = (command: string): Target[] => {
     const what = program === 'git' ? `git ${sub}` : program
     const before = found.size
 
-    for (const [, authority = ''] of words.matchAll(URL_AUTH)) {
-      const host = urlHost(authority)
+    for (const [, authority = '', quoted = ''] of words.matchAll(URL_AUTH)) {
+      const host = urlHost(authority, quoted.length > 1)
       if (host !== undefined) add({ host, what })
     }
     if (NET.has(program) || program === 'git') {

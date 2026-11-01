@@ -34,14 +34,15 @@ FILE_TOOLS = {"Read": "file_path", "Edit": "file_path", "Write": "file_path", "N
 # hosts a shell command reaches: the URL_AUTH / SCP_HOST / NET rules of activity-pane/hooks/flows.ts
 # the whole authority (up to / ? # or a quote), one unit: url_host() takes the host out of it, so a regex can
 # never backtrack into a password and call it the host
-URL_AUTH = re.compile(r"\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp)://([^\s/?#'\"]+)", re.I)
+URL_AUTH = re.compile(r"\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp)://([^\s/?#'\"]+)(['\"][^\s/?#]*)?", re.I)  # 2: cut by a quote
 
 
-def url_host(authority):
+def url_host(authority, cut=False):
     """The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
-    template placeholder ($, backtick, braces, backslash) anywhere, or when, with no @, what follows the host is
-    not a numeric port: an authority a quote cut short (user:p'ss@host) must not log its username as a host."""
-    if re.search(r"[${}`\\]", authority):
+    template placeholder ($, backtick, braces, backslash) anywhere, when a quote cut it short with more text behind
+    (an unbalanced TOKEN'x@host), or when, with no @, what follows the host is not a port: an authority
+    cut at user:p must not log its username as a host. An empty port (host:/) is a port."""
+    if cut or re.search(r"[${}`\\]", authority):
         return None
     user, _, hostport = authority.rpartition("@")
     if hostport.startswith("[") and "]" in hostport:
@@ -49,7 +50,7 @@ def url_host(authority):
     else:
         host, sep, port = hostport.partition(":")
         rest = sep + port  # a bare trailing colon (TOKEN:'pw'@host cut at the quote) is not a port
-    if not host or (not user and rest and not re.fullmatch(r":\d+", rest)):
+    if not host or (not user and rest and not re.fullmatch(r":\d*", rest)):
         return None
     return host
 SCP_HOST = re.compile(r"\b[\w.-]+@([\w.-]+):")
@@ -85,7 +86,7 @@ def bash_hosts(command):
         program = (tokens[0] if tokens else "").split("/")[-1]
         before = len(found)
         for m in URL_AUTH.finditer(" ".join(words)):
-            add(url_host(m.group(1)))
+            add(url_host(m.group(1), cut=len(m.group(2) or "") > 1))
         if program in NET or program == "git":
             for m in SCP_HOST.finditer(segment):
                 add(m.group(1))
