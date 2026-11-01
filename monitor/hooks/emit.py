@@ -41,8 +41,8 @@ def url_host(authority, cut=False):
     """The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
     template placeholder ($, backtick, braces, backslash) anywhere, when it was cut short (`cut`: a quote with text
     behind it, or an @ later in the same word, as in TOKEN:1234/pw@host), or when, with no @, what follows the host
-    is not a numeric port: a quoted ; splits the raw command before shlex sees it, which can leave TOKEN: at a
-    word's end, so an empty port is never trusted."""
+    is not a port. An empty port (host:/x) is a port: words are read whole, quotes resolved, so nothing is
+    cut at a quoted separator or space any more."""
     if cut or re.search(r"[${}`\\]", authority):
         return None
     user, _, hostport = authority.rpartition("@")
@@ -51,7 +51,7 @@ def url_host(authority, cut=False):
     else:
         host, sep, port = hostport.partition(":")
         rest = sep + port
-    if not host or (not user and rest and not re.fullmatch(r":\d+", rest)):
+    if not host or (not user and rest and not re.fullmatch(r":\d*", rest)):
         return None
     return host
 SCP_HOST = re.compile(r"\b[\w.-]+@([\w.-]+):")
@@ -69,47 +69,81 @@ def hostlike(t):
     return all(re.match(r"^[\w-]+$", l) for l in labels) and labels[-1].isalpha()
 
 
+UNRESOLVED = "(unresolved host)"  # a URL or net command whose host could not be named safely: listed, not guessed
+
+
+def segments_of(command):
+    """The command's words, quotes resolved, in segments split at ; | || && & and newlines, as a shell reads
+    them, so a quoted separator or space stays inside its word. None when the quotes do not balance."""
+    lex = shlex.shlex(command or "", posix=True, punctuation_chars=";|&\n")
+    lex.whitespace, lex.whitespace_split = " \t\r", True
+    segments = [[]]
+    try:
+        for word in lex:
+            if word and all(c in ";|&\n" for c in word):
+                segments.append([])
+            else:
+                segments[-1].append(word)
+    except ValueError:
+        return None
+    return segments
+
+
+def url_hosts(word):
+    """(host or None) for each URL in one shell word. A later @ in the word fails closed (None) unless the
+    authority is plainly a host with no userinfo and either no port (every URL parser ends it at the /) or the @
+    in the query or fragment: api.example.com/x?to=a@b is named, while user:p@ss/w@host, AbC/xyz@host and
+    TOKEN:1234/pw@host, a password with a / in it, are not."""
+    out = []
+    for m in URL_AUTH.finditer(word):
+        auth, tail = m.group(1), word[m.end():]
+        plain = "@" not in auth and hostlike(url_host(auth) or "") and (":" not in auth or tail[:1] in ("?", "#"))
+        out.append(url_host(auth, cut=len(m.group(2) or "") > 1 or ("@" in tail and not plain)))
+    return out
+
+
 def bash_hosts(command):
-    """Hosts a shell command reaches, in order, once each. Never returns the command itself."""
+    """Hosts a shell command reaches, in order, once each; UNRESOLVED where a URL's host could not be named
+    safely. Never returns the command itself."""
     found = []
 
     def add(h):
         if h and h not in found:
             found.append(h)
-    for segment in re.split(r"\s*(?:&&|\|\||[;|\n])\s*", command or ""):
-        try:
-            tokens = shlex.split(segment)  # a quoted option value stays one token, so none of it looks like a host
-        except ValueError:
-            tokens = [t.strip("'\"") for t in segment.strip().split()]
-        words = list(tokens)  # URLs are read from the shell's words, quotes resolved, never from the raw text
+    segments = segments_of(command)
+    if segments is None:
+        return [UNRESOLVED] if URL_AUTH.search(command or "") else []  # unbalanced quotes: nothing is read as a host
+    for words in segments:
+        tokens = list(words)
         while tokens and (tokens[0] in PREFIX or re.match(r"^\w+=", tokens[0])):
             tokens.pop(0)
         program = (tokens[0] if tokens else "").split("/")[-1]
         before = len(found)
-        joined = " ".join(words)
-        for m in URL_AUTH.finditer(joined):
-            auth, tail = m.group(1), re.match(r"\S*", joined[m.end():]).group(0)
-            # a later @ in the word fails closed (no host) unless the authority is plainly a host, with no
-            # userinfo, and the @ sits in the query or fragment: api.example.com?to=a@b is listed, while
-            # user:p@ss/w@host, AbC/xyz@host and TOKEN:1234/pw@host, a password with a / in it, are not
-            plain = "@" not in auth and hostlike(url_host(auth) or "") and tail[:1] in ("?", "#")
-            add(url_host(auth, cut=len(m.group(2) or "") > 1 or ("@" in tail and not plain)))
+        unresolved = False
+        for word in words:
+            for host in url_hosts(word):
+                if host:
+                    add(host)
+                else:
+                    unresolved = True
         if program in NET or program == "git":
-            for m in SCP_HOST.finditer(segment):
+            for m in SCP_HOST.finditer(" ".join(words)):
                 add(m.group(1))
         if program in NET and len(found) == before:
             prev = ""
             for t in tokens[1:]:
+                flag, prev = prev.startswith("-"), t
                 if "://" in t:
                     continue  # a URL the rule above found no host in: never read as a bare host either
-                t, flag = re.sub(r"^[^@\s]+@", "", t), prev.startswith("-")
-                prev = t
+                t = re.sub(r"^[^@\s]+@", "", t)
                 # shortcut: a bare argument counts only when shaped like a host (labels of up to 63 chars, an
                 # alphabetic top-level label, or an IPv4) and does not follow an option such as -H or -u, so a
                 # token or header value is never taken for a host. Widen when a dotless host matters.
                 if not t.startswith("-") and not flag and hostlike(t):
                     add(t)
                     break
+        if unresolved and program in NET and len(found) == before:
+            add(UNRESOLVED)  # a network call was made: listed, its host withheld
     return found
 
 

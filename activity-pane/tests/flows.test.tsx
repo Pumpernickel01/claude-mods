@@ -128,10 +128,19 @@ test('a URL with an @ after its authority, an empty port or a variable in the ho
   await $.tool.call(bash("curl https://TOKEN:123'x'@host.example.com/ https://TOKEN'x@host.example.com/ https://TOKEN:/pw@host/ https://TOKEN:1234/pw@host/", 'b8'))
   await $.tool.call(bash('curl https://api.example.com:/x', 'b9'))
   await $.tool.call(bash('curl https://u:p@ss/w@host/ https://AbC/xyz@host/ https://user:p@ss/word@host/', 'b10'))
+  await $.tool.call(bash("curl 'https://TOKEN:1234;pw@host/' 'https://TOKEN;x@host/'", 'b11'))
+  await $.tool.call(bash('curl "https://api.example.com', 'b12'))
   const list = await flows()
 
-  // b9 (an empty port) is ambiguous: no line, rather than a guess; b2's query @ does not touch its plain host
-  expect(list.map(flow => flow.to)).toEqual(['api.example.com', 'api.example.com', '::1', 'api.example.com', 'host.example.com', 'api.example.com', 'host.example.com'])
+  // One line per command: b1 and b2 name their host (a query @ does not touch a plain host); b3 (a variable),
+  // b4 (a token before a variable host), b6 and b8 (an unbalanced quote makes the whole command unresolved),
+  // b10 (a later @ after userinfo or a bare word) and b12 are listed but withheld; b5 is IPv6; b7 reads whole;
+  // b9's empty port is a port; b11's quoted ; stays in its word and names host, not the token
+  expect(list.map(flow => flow.to)).toEqual([
+    'api.example.com', 'api.example.com', '(unresolved host)', '(unresolved host)', '::1', '(unresolved host)',
+    'host.example.com', 'api.example.com', '(unresolved host)', 'api.example.com', '(unresolved host)', 'host', '(unresolved host)',
+  ])
+  expect(JSON.stringify(list.map(flow => flow.to))).not.toContain('TOKEN')
   expect(list.map(flow => flow.to).join()).not.toContain('TOKEN')
   expect(list.map(flow => flow.to).join()).not.toContain('@')
 })

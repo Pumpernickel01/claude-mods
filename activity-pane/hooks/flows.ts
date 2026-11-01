@@ -67,8 +67,8 @@ const URL_AUTH = /\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp):\/\/([^\s/?#'"]
 // The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
 // template placeholder ($, backtick, braces, backslash) anywhere, when it was cut short (`cut`: a quote with text
 // behind it, or an @ later in the same word, as in TOKEN:1234/pw@host), or when, with no @, what follows the host
-// is not a numeric port: a quoted ; splits the raw command before the words are read, which can leave TOKEN:
-// at a word's end, so an empty port is never trusted.
+// is not a port. An empty port (host:/x) is a port: words are read whole, quotes resolved, so nothing is
+// cut at a quoted separator or space any more.
 const urlHost = (authority: string, cut: boolean) => {
   if (cut || /[${}`\\]/.test(authority)) return undefined
   const at = authority.lastIndexOf('@')
@@ -76,7 +76,7 @@ const urlHost = (authority: string, cut: boolean) => {
   const bracket = hostport.startsWith('[') ? hostport.indexOf(']') : -1
   const host = bracket > 0 ? hostport.slice(1, bracket) : hostport.split(':')[0] ?? ''
   const rest = bracket > 0 ? hostport.slice(bracket + 1) : hostport.slice(host.length)
-  if (host === '' || (at <= 0 && rest !== '' && !/^:\d+$/.test(rest))) return undefined
+  if (host === '' || (at <= 0 && rest !== '' && !/^:\d*$/.test(rest))) return undefined
 
   return host
 }
@@ -103,7 +103,61 @@ const PREFIX = new Set(['sudo', 'time', 'exec', 'command', 'nohup', 'env'])
 
 const isIpv4 = (text: string) => text.split('.').every(octet => Number(octet) <= 255)
 
-const unquote = (token: string) => token.replace(/'([^']*)'|"([^"]*)"/g, (_, a: string | undefined, b) => a ?? b ?? '').replace(/^['"]|['"]$/g, '')
+const UNRESOLVED = '(unresolved host)' // a URL whose host could not be named safely: listed, not guessed
+
+// The command's words, quotes resolved, in segments split at ; | & and newlines as a shell reads them, so a
+// quoted separator or space stays inside its word; undefined when the quotes do not balance.
+const segmentsOf = (command: string): string[][] | undefined => {
+  const segments: string[][] = [[]]
+  let word = ''
+  let inWord = false
+  let quote = ''
+  const endWord = () => {
+    if (inWord) segments[segments.length - 1]?.push(word)
+    word = ''
+    inWord = false
+  }
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i] ?? ''
+    if (quote !== '') {
+      if (ch === quote) quote = ''
+      else if (ch === '\\' && quote === '"' && i + 1 < command.length) word += command[(i += 1)]
+      else word += ch
+    } else if (ch === "'" || ch === '"') {
+      quote = ch
+      inWord = true
+    } else if (ch === '\\' && i + 1 < command.length) {
+      word += command[(i += 1)]
+      inWord = true
+    } else if (/\s/.test(ch)) {
+      endWord()
+      if (ch === '\n') segments.push([])
+    } else if (ch === ';' || ch === '|' || ch === '&') {
+      endWord()
+      segments.push([])
+    } else {
+      word += ch
+      inWord = true
+    }
+  }
+  if (quote !== '') return undefined
+  endWord()
+
+  return segments
+}
+
+// (host or undefined) for each URL in one shell word. A later @ in the word fails closed unless the authority
+// is plainly a host with no userinfo and either no port (every URL parser ends it at the /) or the @ in the
+// query or fragment: api.example.com/x?to=a@b is named, while user:p@ss/w@host, AbC/xyz@host and
+// TOKEN:1234/pw@host, a password with a / in it, are not.
+const urlHosts = (word: string) =>
+  [...word.matchAll(URL_AUTH)].map(m => {
+    const [whole, authority = '', quoted = ''] = m
+    const tail = word.slice((m.index ?? 0) + whole.length)
+    const plain = !authority.includes('@') && HOSTLIKE.test(urlHost(authority, false) ?? '') && (!authority.includes(':') || /^[?#]/.test(tail))
+
+    return urlHost(authority, quoted.length > 1 || (tail.includes('@') && !plain))
+  })
 
 // Each host a shell command reaches, once, with the program that reaches it.
 export const targetsOf = (command: string): Target[] => {
@@ -115,30 +169,33 @@ export const targetsOf = (command: string): Target[] => {
 
   for (const [, app = ''] of command.matchAll(APP)) add({ host: app, what: 'Apple Events' })
 
-  for (const segment of command.split(/\s*(?:&&|\|\||[;|\n])\s*/)) {
-    const tokens = segment.trim().split(/\s+/).map(unquote)
-    const words = tokens.join(' ') // URLs are read from the unquoted words, never from the raw text
+  const segments = segmentsOf(command)
+  if (segments === undefined) {
+    if (/:\/\//.test(command)) add({ host: UNRESOLVED, what: 'shell' }) // unbalanced quotes: nothing is read as a host
+
+    return [...found.values()]
+  }
+  for (const words of segments) {
+    const tokens = [...words]
     while (tokens.length > 0 && (PREFIX.has(tokens[0] ?? '') || /^\w+=/.test(tokens[0] ?? ''))) tokens.shift()
 
     const program = (tokens[0] ?? '').split('/').pop() ?? ''
     const sub = tokens[1] ?? ''
     const what = program === 'git' ? `git ${sub}` : program
     const before = found.size
+    const joined = words.join(' ')
+    let unresolved = false
 
-    for (const m of words.matchAll(URL_AUTH)) {
-      const [whole, authority = '', quoted = ''] = m
-      const tail = /^\S*/.exec(words.slice((m.index ?? 0) + whole.length))?.[0] ?? '' // the rest of the word
-      // a later @ in the word fails closed (no host) unless the authority is plainly a host, with no
-      // userinfo, and the @ sits in the query or fragment: api.example.com?to=a@b is listed, while
-      // user:p@ss/w@host, AbC/xyz@host and TOKEN:1234/pw@host, a password with a / in it, are not
-      const plain = !authority.includes('@') && HOSTLIKE.test(urlHost(authority, false) ?? '') && /^[?#]/.test(tail)
-      const host = urlHost(authority, quoted.length > 1 || (tail.includes('@') && !plain))
-      if (host !== undefined) add({ host, what })
+    for (const word of words) {
+      for (const host of urlHosts(word)) {
+        if (host !== undefined) add({ host, what })
+        else unresolved = true
+      }
     }
     if (NET.has(program) || program === 'git') {
-      for (const [, host = ''] of segment.matchAll(SCP_HOST)) add({ host, what })
+      for (const [, host = ''] of joined.matchAll(SCP_HOST)) add({ host, what })
     }
-    for (const [, ip = ''] of segment.matchAll(IPV4)) if (isIpv4(ip)) add({ host: ip, what })
+    for (const [, ip = ''] of joined.matchAll(IPV4)) if (isIpv4(ip)) add({ host: ip, what })
 
     if (program === 'git' && GIT_REMOTE.has(sub) && found.size === before) {
       const remote = tokens.slice(2).find(token => !token.startsWith('-'))
@@ -151,6 +208,7 @@ export const targetsOf = (command: string): Target[] => {
         .find(token => !token.startsWith('-') && /^[\w.-]+$/.test(token) && !/^\d+$/.test(token))
       if (host !== undefined) add({ host, what })
     }
+    if (unresolved && NET.has(program) && found.size === before) add({ host: UNRESOLVED, what }) // a network call was made: listed, its host withheld
   }
 
   return [...found.values()]
