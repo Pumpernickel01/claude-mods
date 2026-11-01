@@ -6,11 +6,20 @@ export type Draft = Omit<Flow, 'id' | 'at'>
 // Where a shell command points: a host, or a git remote still to be looked up.
 export type Target = { host: string; what: string } | { remote: string; what: string }
 
-const LOCAL = [/^localhost$/i, /^127\./, /^0\.0\.0\.0$/, /^::1$/]
-const LAN = [/^10\./, /^192\.168\./, /^172\.(1[6-9]|2\d|3[01])\./, /^169\.254\./, /\.local$/i]
+const LAN_V4 = [/^10\./, /^192\.168\./, /^172\.(1[6-9]|2\d|3[01])\./, /^169\.254\./]
 
 export const tagOf = (host: string): Flow['tag'] =>
-  LOCAL.some(r => r.test(host)) ? 'local' : LAN.some(r => r.test(host)) ? 'LAN' : undefined
+  tagOfName(host.toLowerCase())
+
+// The address ranges apply to dotted IPv4 addresses alone: 127.example.com or 10.example.org is a
+// name like any other and gets no tag.
+const tagOfName = (name: string): Flow['tag'] => {
+  if (name === 'localhost' || name === '::1' || name === '0.0.0.0') return 'local'
+  if (name.endsWith('.local')) return 'LAN'
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(name) || !isIpv4(name)) return undefined
+
+  return name.startsWith('127.') ? 'local' : LAN_V4.some(r => r.test(name)) ? 'LAN' : undefined
+}
 
 const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim()
 
@@ -138,7 +147,7 @@ export const flowsOfTool = (tool: string, input: Record<string, unknown>, ran: R
     // URL's parser, not a regex: in http://127.0.0.1@evil.com the host is evil.com, not a local address
     const url = parsedUrl(input.url)
     const host = url?.hostname.replace(/^\[|\]$/g, '') ?? input.url
-    const draft: Draft = { from: 'WebFetch', to: host, tag: tagOf(host), what: `GET ${url ? url.pathname + url.search : '/'}`, down: received, detail: input.url, isFailed }
+    const draft: Draft = { from: 'WebFetch', to: host, tag: url ? tagOf(host) : undefined, what: `GET ${url ? url.pathname + url.search : '/'}`, down: received, detail: input.url, isFailed }
 
     return { drafts: [draft], remotes: [] }
   }

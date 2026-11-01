@@ -8,6 +8,7 @@ import {
   FLOW_ROWS,
   MIN_COLUMNS,
   TOOLS_ROWS,
+  feedDirOf,
   feedPathOf,
   paneIdOf,
   rectOf,
@@ -87,17 +88,21 @@ async function apiOf($: EngineInterface) {
 }
 
 async function herdrOf($: EngineInterface, root: string): Promise<Herdr | undefined> {
-  const [isHerdr, pane, bin, tmp, home] = await Promise.all([
+  const [isHerdr, pane, bin, home] = await Promise.all([
     $.env.get('HERDR_ENV'),
     $.env.get('HERDR_PANE_ID'),
     $.env.get('HERDR_BIN_PATH'),
-    $.env.get('TMPDIR'),
     $.env.get('HOME'),
   ])
-  if (isHerdr !== '1' || pane === undefined || pane === '') return undefined
+  if (isHerdr !== '1' || pane === undefined || pane === '' || !home) return undefined
 
-  // macOS gives each user a private TMPDIR; without one, ~/.claude rather than the shared /tmp
-  return { bin: bin || 'herdr', pane, root, feed: feedPathOf(tmp || `${home}/.claude/activity`, pane) }
+  return { bin: bin || 'herdr', pane, root, feed: feedPathOf(home, pane) }
+}
+
+// The feed's folder, readable by this user alone, before anything is written to it.
+async function privateDir($: EngineInterface, herdr: Herdr) {
+  const ran = await $.process.run(['install', '-d', '-m', '700', feedDirOf(herdr.feed)], { timeoutMs: 5_000 })
+  if (ran.exitCode !== 0) throw new Error(`install -d: ${ran.stderr.trim() || `exit ${ran.exitCode}`}`)
 }
 
 async function herdrRun($: EngineInterface, herdr: Herdr, args: string[]) {
@@ -291,6 +296,8 @@ export const register: Register = on => {
     })
     live.api = await apiOf($)
     live.herdr = e.isInteractive ? await herdrOf($, await $.session.root()) : undefined
+    // no private folder for the feed, no column: the Activity pane inside Claude instead
+    if (live.herdr !== undefined) await privateDir($, live.herdr).catch(() => (live.herdr = undefined))
 
     const opened = await openHere($, live, false)
     if (opened.isFallback === true) $.ui.toast(opened.text)

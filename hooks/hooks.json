@@ -11,12 +11,19 @@
         "hooks": [
           { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/monitor/hooks/emit.py\" session_start", "timeout": 5 }
         ]
+      },
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hud/launch.py\"", "timeout": 5 }
+        ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/prompt-journal/journal.py\"", "timeout": 5 }
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/prompt-journal/journal.py\"", "timeout": 5 },
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/monitor/hooks/emit.py\" prompt", "timeout": 5 }
         ]
       }
     ],
@@ -95,7 +102,8 @@
     "Notification": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/notify/notify.py\"", "timeout": 10 }
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/notify/notify.py\"", "timeout": 10 },
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/monitor/hooks/emit.py\" notification", "timeout": 5 }
         ]
       }
     ],

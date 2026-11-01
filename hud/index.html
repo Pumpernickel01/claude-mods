@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Claude HUD</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#1b1b1a; --bg2:#161615; --fg:#d3d1c7; --dim:#6f6e68; --rule:#363632; --rule2:#4a4944;
+          --cyan:#8fb8c8; --amber:#d9a85c; --red:#c96a6a; --green:#9bb58a; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+               font:12px/1.5 "SF Mono", Menlo, "DejaVu Sans Mono", monospace; overflow:hidden; }
+  * { box-sizing:border-box; }
+  #wrap { display:grid; grid-template-columns: 1fr 46ch; grid-template-rows: minmax(0, 1fr) auto; height:100%; gap:0 8px; padding:8px 8px 4px; }
+  body.big #wrap { grid-template-columns: 1fr 0; gap:0; }
+  body.big aside, body.big #status { display:none; }
+  .panel { position:relative; border:1px solid var(--rule); min-height:0; min-width:0; }
+  .panel > .title { position:absolute; top:-8px; left:10px; background:var(--bg); padding:0 6px; color:var(--dim); line-height:1; font-size:12px; cursor:default; user-select:none; }
+  .panel > .title b { color:var(--fg); font-weight:400; }
+  #stage { padding:0; }
+  canvas { display:block; width:100%; height:100%; background:var(--bg); }
+  canvas.grab { cursor:grab; } canvas.grabbing { cursor:grabbing; }
+  aside { display:flex; flex-direction:column; min-height:0; gap:12px; }
+  aside .panel { display:flex; flex-direction:column; padding:10px 10px 6px; }
+  aside .panel.closed > div { display:none; } aside .panel.closed { flex:0 0 auto; }
+  aside .title.toggle { cursor:pointer; }
+  #sess { flex:0 0 auto; }
+  #sess .pr { color:var(--amber); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #sess .st { color:var(--dim); }
+  #agentsP { flex:0 1 auto; max-height:30%; }
+  #agents { overflow:auto; min-height:0; }
+  #agents div, #tools div { display:flex; gap:1ch; white-space:nowrap; overflow:hidden; }
+  #agents .k { width:2ch; flex:none; } #agents .meta { margin-left:auto; color:var(--dim); }
+  #toolsP { flex:1 1 auto; }
+  #tools { overflow:auto; min-height:0; }
+  #tools .t { color:var(--dim); } #tools .who { color:var(--cyan); width:7ch; flex:none; overflow:hidden; }
+  #tools .tool { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  #tools .tool .to { color:var(--dim); }
+  #tools .ms { margin-left:auto; color:var(--dim); flex:none; }
+  #tools .more { color:var(--cyan); cursor:pointer; }
+  .live { color:var(--cyan); } .ok { color:var(--green); } .bad { color:var(--red); } .warn { color:var(--amber); } .gone { color:var(--dim); }
+  #jarvisP { flex:0 1 auto; max-height:34%; }
+  #chat { overflow:auto; min-height:0; }
+  #chat .m { white-space:pre-wrap; word-break:break-word; margin:0 0 6px; }
+  #chat .m.ask { color:var(--amber); } #chat .m.ask::before { content:"> "; }
+  #chat .m.answer { color:var(--fg); border-left:1px solid var(--rule2); padding-left:1ch; }
+  #chat .m.error { color:var(--red); }
+  #chat .m small { display:block; color:var(--dim); font-size:11px; }
+  #askForm { display:flex; gap:1ch; align-items:center; margin-top:4px; border-top:1px solid var(--rule); padding-top:6px; }
+  #askForm .prompt { color:var(--amber); }
+  #askForm input { flex:1; min-width:0; background:transparent; color:var(--fg); border:0; font:inherit; padding:0; caret-color:var(--amber); }
+  #askForm input:focus { outline:none; }
+  #askForm button { background:transparent; color:var(--dim); border:0; font:inherit; cursor:pointer; padding:0; }
+  #askForm button:hover, #askForm button:focus-visible { color:var(--fg); outline:none; }
+  #askForm button.on { color:var(--green); }
+  #status { grid-column: 1 / -1; display:flex; gap:2ch; color:var(--dim); white-space:nowrap; overflow:hidden; padding:2px 2px 0; }
+  #status .seg b { color:var(--fg); font-weight:400; } #status .seg.jarvis b { color:var(--amber); }
+  #status .right { margin-left:auto; }
+  #bar { position:absolute; left:12px; right:12px; bottom:8px; display:flex; align-items:center; gap:1ch; color:var(--dim); font-size:12px; }
+  #bar button { background:transparent; color:var(--dim); border:0; font:inherit; cursor:pointer; padding:0; }
+  #bar button.on { color:var(--green); }
+  #track { flex:1; height:12px; position:relative; cursor:pointer; background:
+           repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px 8px) center / 100% 1px no-repeat; }
+  #track .fill { position:absolute; left:0; top:5px; height:1px; background:var(--cyan); }
+  #track .knob { position:absolute; top:2px; width:7px; height:7px; margin-left:-4px; background:var(--cyan); }
+  #strip { position:absolute; top:8px; right:12px; color:var(--dim); pointer-events:none; }
+  #strip b { color:var(--fg); font-weight:400; } #strip.listening b, #strip.speaking b, #strip.hearing b { color:var(--amber); }
+  #strip.thinking b { color:var(--cyan); }
+  #toasts { position:absolute; top:30px; right:12px; display:flex; flex-direction:column; gap:4px; width:38ch; }
+  .toast { border:1px solid var(--rule2); background:var(--bg2); padding:4px 8px; cursor:pointer; }
+  .toast.ask { border-color:var(--red); } .toast.ok { border-color:var(--green); }
+  .toast small { display:block; color:var(--dim); }
+  #tip { position:fixed; pointer-events:none; background:var(--bg2); color:var(--fg); border:1px solid var(--rule2); padding:4px 8px; max-width:48ch; display:none; z-index:5; white-space:pre-wrap; }
+  #tip b { color:var(--cyan); font-weight:400; }
+  /* wake mode: the one orchestrated moment */
+  #wake { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(27,27,26,.82); z-index:4; }
+  body.wake #wake { display:flex; animation: wakein .35s ease-out; }
+  #wake .col { width:72ch; max-width:92%; }
+  #wake .state { color:var(--dim); height:1.5em; }
+  #wake .state b { color:var(--amber); font-weight:400; }
+  #wake .meter { height:2.2em; display:flex; align-items:flex-end; gap:2px; color:var(--amber); font-size:16px; line-height:1; margin:6px 0 10px; }
+  #wake .meter span { display:inline-block; width:1ch; }
+  #wake .heard { min-height:3em; color:var(--fg); white-space:pre-wrap; word-break:break-word; }
+  #wake .heard::before { content:"> "; color:var(--amber); }
+  #wake .heard .cur { display:inline-block; width:1ch; height:1.2em; background:var(--amber); vertical-align:text-bottom; animation: blink 1s steps(1) infinite; }
+  #wake .reply { margin-top:14px; min-height:6em; max-height:50vh; overflow:auto; border-left:1px solid var(--rule2); padding-left:2ch; white-space:pre-wrap; word-break:break-word; color:var(--fg); }
+  #wake .reply.error { color:var(--red); }
+  #wake .foot { margin-top:14px; color:var(--dim); }
+  @keyframes wakein { from { opacity:0 } to { opacity:1 } }
+  @keyframes blink { 50% { opacity:0 } }
+  @media (prefers-reduced-motion: reduce) { body.wake #wake { animation:none } #wake .heard .cur { animation:none } }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage" class="panel"><span class="title" id="stageTitle">session <b>…</b></span>
+    <canvas id="c"></canvas>
+    <div id="strip"><b>waiting</b></div>
+    <div id="toasts"></div>
+    <div id="bar"><button id="liveBtn" class="on">[live]</button><div id="track"><div class="fill"></div><div class="knob"></div></div><span class="when"></span></div>
+    <div id="wake"><div class="col">
+      <div class="state">listening</div>
+      <div class="meter"></div>
+      <div class="heard"><span class="txt"></span><span class="cur"></span></div>
+      <div class="reply"></div>
+      <div class="foot"></div>
+      <form id="wakeForm" style="display:flex;gap:1ch;margin-top:8px"><span class="prompt" style="color:var(--amber)">&gt;</span><input id="wakeInput" autocomplete="off" maxlength="4000" style="flex:1;background:transparent;border:0;color:var(--fg);font:inherit;caret-color:var(--amber);outline:none"></form>
+    </div></div>
+  </div>
+  <aside>
+    <div class="panel" id="sess"><span class="title">session</span>
+      <div><div class="head"><span class="st">waiting for events</span></div><div class="pr"></div></div>
+    </div>
+    <div class="panel" id="agentsP"><span class="title toggle">agents</span><div id="agents"></div></div>
+    <div class="panel" id="toolsP"><span class="title toggle">tool calls</span><div id="tools"></div></div>
+    <div class="panel" id="jarvisP"><span class="title">jarvis</span>
+      <div id="chat"></div>
+      <form id="askForm"><span class="prompt">&gt;</span><input id="askInput" autocomplete="off" maxlength="4000" placeholder="ask ( / )"><button type="button" id="speakBtn">[speak: on]</button></form>
+    </div>
+  </aside>
+  <div id="status"><span class="seg">state <b id="stState">waiting</b></span><span class="seg">agents <b id="stAgents">0</b></span><span class="seg">live <b id="stLive">0</b></span><span class="seg">sound <b id="stSound">off</b></span><span class="right">drag moves · dblclick unpins · c clear · f big · m mute · l live · / ask · esc</span></div>
+</div>
+<div id="tip"></div>
+<script type="module">
+import { Model, MAIN, links, fold } from './model.mjs'
+
+const C = { bg:'#1b1b1a', fg:'#d3d1c7', dim:'#6f6e68', rule:'#363632', rule2:'#4a4944', cyan:'#8fb8c8', amber:'#d9a85c', red:'#c96a6a', green:'#9bb58a' }
+const STATUS_COLOR = { running:C.cyan, starting:C.amber, done:C.dim, failed:C.red, gone:C.rule2, idle:C.fg }
+const TARGET_COLOR = { file:C.dim, host:C.cyan, mcp:C.amber }
+const NOTE_LABEL = { permission_prompt:'needs permission', idle_prompt:'waiting for you', agent_needs_input:'agent needs input', agent_completed:'agent finished' }
+const HEX_ID = /^[0-9a-f]{8,}$/
+const HUD_TOKEN = '__HUD_TOKEN__' // filled in by the server for this run
+const TARGETS_SHOWN = 24
+const el = id => document.getElementById(id)
+const params = new URLSearchParams(location.search), wanted = params.get('session')
+if (params.get('big')) document.body.classList.add('big')
+if (params.get('wake')) document.body.classList.add('wake')
+
+// ---------- data ----------
+const model = new Model()
+const liveSession = () => (wanted ? model.sessions.get(wanted) : model.latest()) || null
+let synced = false, dirty = true
+let scrub = null
+const session = () => scrub ? scrub.S : liveSession()
+const es = new EventSource('/events' + (wanted ? `?session=${encodeURIComponent(wanted)}` : ''))
+es.onmessage = e => { try { model.ingest(JSON.parse(e.data)) } catch {} ; if (synced) dirty = true }
+es.addEventListener('synced', () => { synced = true; dirty = true })
+es.onerror = () => { document.querySelector('#sess .st').textContent = 'reconnecting' }
+
+// ---------- sound: unlocked by the first click or key, m mutes ----------
+let audio = null, muted = false
+const unlock = () => { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); if (audio.state === 'suspended') audio.resume(); el('stSound').textContent = muted ? 'muted' : 'on' }
+addEventListener('pointerdown', unlock, { once: true }); addEventListener('keydown', unlock, { once: true })
+function tone(freq, ms, gain = 0.04, type = 'sine', slide = 0) {
+  if (!audio || muted || scrub) return
+  const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime
+  o.type = type; o.frequency.setValueAtTime(freq, t); if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + ms / 1000)
+  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0005, t + ms / 1000)
+  o.connect(g).connect(audio.destination); o.start(t); o.stop(t + ms / 1000 + 0.02)
+}
+const SOUND = { tick: () => tone(1500, 30, 0.015), chime: () => { tone(880, 140, 0.04); setTimeout(() => tone(1320, 220, 0.04), 100) },
+                fail: () => tone(220, 280, 0.05, 'sawtooth', 110), prompt: () => tone(660, 80, 0.025), note: () => { tone(988, 110, 0.04); setTimeout(() => tone(740, 180, 0.04), 130) } }
+
+// ---------- layout ----------
+const canvas = el('c'), ctx = canvas.getContext('2d')
+const pos = new Map(), pinned = new Set()
+let W = 0, H = 0, settleUntil = 0
+function resize() {
+  const r = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1
+  W = r.width; H = r.height
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); settleUntil = performance.now() + 3000
+}
+addEventListener('resize', resize); resize()
+const hash = s => { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) | 0; return h >>> 0 }
+const big = () => document.body.classList.contains('big')
+const scale = () => big() ? 1.5 : 1
+
+function place(S, drawn, now) {
+  for (const [a, b] of S.rekeyed.splice(0)) if (pos.has(a) && !pos.has(b)) { pos.set(b, pos.get(a)); pos.delete(a) }
+  let changed = false
+  for (const n of drawn) {
+    if (pos.has(n.id)) continue
+    const p = pos.get(n.parent) || { x: W / 2, y: H / 2 }
+    const a = (hash(n.id) % 628) / 100
+    pos.set(n.id, { x: p.x + Math.cos(a) * 40 + (Math.random() - .5), y: p.y + Math.sin(a) * 40 + (Math.random() - .5), vx: 0, vy: 0, born: now })
+    changed = true
+  }
+  const keep = new Set(drawn.map(n => n.id))
+  for (const nid of pos.keys()) if (!keep.has(nid)) { pos.delete(nid); changed = true }
+  if (changed) settleUntil = now + 4000
+}
+function step(drawn, now) {
+  const main = pos.get(MAIN); main.x = W / 2; main.y = H / 2
+  if (now > settleUntil) return
+  const k = scale()
+  for (let i = 0; i < drawn.length; i++) {
+    const a = pos.get(drawn[i].id)
+    for (let j = i + 1; j < drawn.length; j++) {
+      const b = pos.get(drawn[j].id)
+      let dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy
+      if (d2 < 1) { dx = 1; dy = 0; d2 = 1 }
+      const f = 9000 * k * k / d2, d = Math.sqrt(d2)
+      a.vx -= f * dx / d; a.vy -= f * dy / d; b.vx += f * dx / d; b.vy += f * dy / d
+    }
+  }
+  for (const n of drawn) {
+    if (n.id === MAIN) continue
+    const p = pos.get(n.id)
+    if (pinned.has(n.id)) { p.vx = p.vy = 0; continue }
+    const q = pos.get(n.parent) || main
+    const dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 1
+    const want = (n.parent === MAIN ? 170 : 110) * k
+    const f = (d - want) * 0.02
+    p.vx += f * dx / d; p.vy += f * dy / d
+    p.vx += (W / 2 - p.x) * 0.0015; p.vy += (H / 2 - p.y) * 0.0015
+    p.vx *= 0.82; p.vy *= 0.82
+    if (Math.abs(p.vx) < 0.03) p.vx = 0; if (Math.abs(p.vy) < 0.03) p.vy = 0
+    p.x = Math.min(W - 40, Math.max(40, p.x + p.vx)); p.y = Math.min(H - 40, Math.max(40, p.y + p.vy))
+  }
+}
+function targetRing(S) {
+  const all = [...S.targets.values()].sort((a, b) => b.last - a.last).slice(0, TARGETS_SHOWN).sort((a, b) => a.id < b.id ? -1 : 1)
+  const rx = W / 2 - 190 * scale(), ry = H / 2 - 64 * scale(), out = new Map()
+  all.forEach((t, i) => { const a = -Math.PI / 2 + (i / all.length) * Math.PI * 2; out.set(t.id, { t, x: W / 2 + Math.cos(a) * rx, y: H / 2 + Math.sin(a) * ry }) })
+  return out
+}
+
+// ---------- effects driven by changes in the session ----------
+const fx = { flashes: new Map(), pulses: [], hits: [], bubbles: [], swellAt: -1e9, sentAt: -1e9, seen: null, status: new Map(), sid: null }
+let lastTick = 0
+function watch(S, now) {
+  if (fx.sid !== S.id) { Object.assign(fx, { flashes: new Map(), pulses: [], hits: [], bubbles: [], seen: { ...S.counts }, status: new Map(), sid: S.id }); return }
+  const fresh = (arr, key) => { const n = Math.min(arr.length, S.counts[key] - fx.seen[key]); fx.seen[key] = S.counts[key]; return n > 0 ? arr.slice(-n) : [] }
+  for (const c of fresh(S.calls, 'calls')) { fx.flashes.set(c.agent.id, { tool: c.tool, at: now }); if (now - lastTick > 60) { SOUND.tick(); lastTick = now } }
+  for (const h of fresh(S.hits, 'hits')) fx.hits.push({ ...h, at: now })
+  for (const p of fresh(S.prompts, 'prompts')) { fx.bubbles.push({ text: p.text, at: now }); SOUND.prompt() }
+  for (const n of fresh(S.notes, 'notes')) { toast(NOTE_LABEL[n.kind] || n.kind, n.kind === 'permission_prompt' || n.kind === 'agent_needs_input' ? 'ask' : ''); SOUND.note() }
+  for (const [nid, n] of S.nodes) {
+    const was = fx.status.get(nid)
+    if (was && was !== n.status) {
+      if (nid === MAIN && n.status === 'idle' && was === 'running') { toast('claude finished', 'ok'); SOUND.chime() }
+      if (nid !== MAIN && (n.status === 'done' || n.status === 'failed')) {
+        fx.pulses.push({ from: nid, to: n.parent, at: now, color: n.status === 'done' ? C.green : C.red }); fx.swellAt = now + 500
+        n.status === 'done' ? SOUND.chime() : SOUND.fail()
+      }
+    }
+    fx.status.set(nid, n.status)
+  }
+  if (fx.hits.length > 60) fx.hits.splice(0, fx.hits.length - 60)
+  fx.pulses = fx.pulses.filter(p => now - p.at < 900); fx.bubbles = fx.bubbles.filter(b => now - b.at < 7000)
+}
+function toast(text, cls) {
+  const d = document.createElement('div'); d.className = `toast ${cls}`; d.innerHTML = `${esc(text)}<small>${clock(Date.now() / 1000)} · click to focus the terminal</small>`
+  d.onclick = () => { fetch('/focus', { method: 'POST' }).catch(() => {}); d.remove() }
+  el('toasts').prepend(d); setTimeout(() => d.remove(), 8000)
+  while (el('toasts').children.length > 4) el('toasts').lastChild.remove()
+}
+
+// ---------- drawing: thin lines, no glow ----------
+const tagOf = n => n.kind === 'fold' ? n.alias : HEX_ID.test(n.id) ? n.id.slice(0, 6) : n.id === MAIN ? 'main' : n.id.slice(-6)
+const tokensOf = n => n.tokens ? (n.tokens.input_tokens || 0) + (n.tokens.cache_read_input_tokens || 0) + (n.tokens.cache_creation_input_tokens || 0) + (n.tokens.output_tokens || 0) : 0
+const radiusOf = n => (n.id === MAIN ? 24 : n.kind === 'fold' ? 16 : 17 + Math.min(10, Math.log10(1 + tokensOf(n) / 1000) * 5)) * scale()
+const shortTool = t => t.replace(/^mcp__(plugin_)?/, '').replace(/^([^_]+)_\1__/, '$1:').replace(/__/, ':')
+const shortTarget = t => { const s = t.kind === 'file' ? t.id.split('/').slice(-2).join('/') : t.id; return s.length > 26 ? '…' + s.slice(-25) : s }
+const bezier = (a, b, bend) => { const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1; return { cx: mx - dy / d * bend, cy: my + dx / d * bend } }
+const onCurve = (a, c, b, t) => ({ x: (1 - t) ** 2 * a.x + 2 * (1 - t) * t * c.cx + t * t * b.x, y: (1 - t) ** 2 * a.y + 2 * (1 - t) * t * c.cy + t * t * b.y })
+const font = px => `${px * scale()}px "SF Mono", Menlo, monospace`
+
+function draw(S, drawn, edges, ring, now, tsec) {
+  ctx.clearRect(0, 0, W, H)
+  const k = scale()
+  for (const { t, x, y } of ring.values()) {
+    const idle = Math.min(1, (tsec - t.last) / 60), col = TARGET_COLOR[t.kind] || C.dim, hot = tsec - t.last < 1.5
+    ctx.globalAlpha = 0.35 + 0.65 * (1 - idle); ctx.lineWidth = hot ? 2 : 1; ctx.strokeStyle = hot ? C.fg : col; ctx.fillStyle = C.bg
+    ctx.beginPath()
+    if (t.kind === 'file') ctx.rect(x - 5 * k, y - 6 * k, 10 * k, 12 * k); else if (t.kind === 'host') ctx.arc(x, y, 6 * k, 0, 7); else { ctx.moveTo(x, y - 7 * k); ctx.lineTo(x + 7 * k, y); ctx.lineTo(x, y + 7 * k); ctx.lineTo(x - 7 * k, y); ctx.closePath() }
+    ctx.fill(); ctx.stroke()
+    if (!big()) { ctx.fillStyle = col; ctx.font = font(11); ctx.textAlign = x < W / 2 ? 'right' : 'left'; ctx.fillText(shortTarget(t), x + (x < W / 2 ? -11 : 11), y + 4) }
+  }
+  ctx.globalAlpha = 1
+  for (const h of fx.hits) {
+    const a = pos.get(h.from) || pos.get(MAIN), b = ring.get(h.target); if (!a || !b) continue
+    const t = (now - h.at) / 700; if (t > 1) continue
+    const c = bezier(a, b, 30), p = onCurve(a, c, b, t)
+    ctx.strokeStyle = C.rule2; ctx.globalAlpha = 0.6 * (1 - t); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(c.cx, c.cy, b.x, b.y); ctx.stroke()
+    ctx.globalAlpha = 1 - t * 0.5; ctx.fillStyle = TARGET_COLOR[b.t.kind] || C.dim; ctx.fillRect(p.x - 2 * k, p.y - 2 * k, 4 * k, 4 * k)
+  }
+  fx.hits = fx.hits.filter(h => now - h.at < 700)
+  for (const l of edges) {
+    const a = pos.get(l.from), b = pos.get(l.to); if (!a || !b) continue
+    const bend = ((hash(l.from + l.to) % 40) - 20) * (l.kind === 'message' ? 2 : 1)
+    const c = bezier(a, b, bend), live = l.flowing
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(c.cx, c.cy, b.x, b.y)
+    ctx.setLineDash(l.kind === 'message' ? [4, 4] : []); ctx.lineWidth = 1
+    ctx.strokeStyle = live ? (l.kind === 'message' ? C.amber : C.cyan) : C.rule2; ctx.globalAlpha = live ? 0.9 : 0.7
+    ctx.stroke(); ctx.setLineDash([])
+    if (live && !scrub) {
+      ctx.fillStyle = l.kind === 'message' ? C.amber : C.cyan
+      for (let i = 0; i < 3; i++) {
+        let t = ((now / 1400) + i / 3 + (hash(l.to) % 100) / 100) % 1; if (l.back) t = 1 - t
+        const p = onCurve(a, c, b, t); ctx.globalAlpha = 0.3 + 0.7 * Math.sin(t * Math.PI)
+        ctx.fillRect(p.x - 2 * k, p.y - 2 * k, 4 * k, 4 * k)
+      }
+    }
+  }
+  for (const p of fx.pulses) {
+    const a = pos.get(p.from), b = pos.get(p.to); if (!a || !b) continue
+    const t = Math.min(1, (now - p.at) / 600), c = bezier(a, b, ((hash(p.to + p.from) % 40) - 20)), q = onCurve(a, c, b, t)
+    ctx.globalAlpha = 1; ctx.fillStyle = p.color; ctx.fillRect(q.x - 3 * k, q.y - 3 * k, 6 * k, 6 * k)
+  }
+  ctx.globalAlpha = 1
+  for (const n of drawn) {
+    const p = pos.get(n.id), isMain = n.id === MAIN
+    let r = radiusOf(n)
+    if (isMain && now < fx.swellAt) r *= 1 + 0.2 * Math.sin((fx.swellAt - now) / 500 * Math.PI)
+    const col = STATUS_COLOR[n.status] || C.fg
+    const grow = Math.max(0, Math.min(1, (now - p.born) / 400))
+    ctx.globalAlpha = (n.isLive || isMain ? 1 : 0.6) * grow
+    ctx.beginPath(); ctx.arc(p.x, p.y, r * grow, 0, 7); ctx.fillStyle = C.bg; ctx.fill()
+    ctx.lineWidth = isMain ? 2 : 1; ctx.strokeStyle = col; if (n.kind === 'fold') ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([])
+    if (pinned.has(n.id)) { ctx.fillStyle = C.amber; ctx.fillRect(p.x + r * 0.7 - 2, p.y - r * 0.7 - 2, 4, 4) }
+    if (n.isLive && !scrub) { ctx.beginPath(); ctx.arc(p.x, p.y, r + 4 * k, now / 300, now / 300 + 1.4); ctx.lineWidth = 1; ctx.strokeStyle = col; ctx.stroke() }
+    ctx.fillStyle = col; ctx.font = font(isMain ? 12 : 10); ctx.textAlign = 'center'
+    ctx.fillText(isMain ? (n.task || 'main') : tagOf(n), p.x, p.y + 4 * k)
+    if (!big() || n.kind !== 'fold') { ctx.fillStyle = C.dim; ctx.font = font(11); ctx.fillText(isMain ? n.status : n.kind === 'fold' ? '' : n.kind, p.x, p.y + r + 14 * k) }
+    const fl = fx.flashes.get(n.id)
+    if (fl && now - fl.at < 1100) { ctx.globalAlpha = Math.min(1, (1100 - (now - fl.at)) / 400); ctx.fillStyle = C.fg; ctx.font = font(11); ctx.fillText(shortTool(fl.tool), p.x, p.y - r - 7 * k) }
+  }
+  const m = pos.get(MAIN)
+  if (now - fx.sentAt < 900) { // a request went out: one amber ring leaves the main node
+    const t = (now - fx.sentAt) / 900
+    ctx.globalAlpha = 1 - t; ctx.strokeStyle = C.amber; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(m.x, m.y, radiusOf({ id: MAIN }) + t * 90 * k, 0, 7); ctx.stroke(); ctx.globalAlpha = 1
+  }
+  fx.bubbles.forEach((b, i) => {
+    const age = now - b.at, a = age < 300 ? age / 300 : age > 6000 ? Math.max(0, 1 - (age - 6000) / 1000) : 1
+    const text = '> ' + (b.text.length > 56 ? b.text.slice(0, 55) + '…' : b.text)
+    ctx.font = font(12); const w = ctx.measureText(text).width + 16 * k, h = 22 * k, x = m.x - w / 2, y = m.y - 56 * k - i * 26 * k
+    ctx.globalAlpha = a; ctx.fillStyle = C.bg; ctx.fillRect(x, y - h / 2, w, h); ctx.strokeStyle = C.rule2; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y - h / 2 + .5, w, h)
+    ctx.fillStyle = C.amber; ctx.textAlign = 'center'; ctx.fillText(text, m.x, y + 4 * k)
+  })
+  ctx.globalAlpha = 1
+}
+
+// ---------- panels, status line, scrubber ----------
+const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]))
+const fmtMs = ms => ms == null ? '' : ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
+const elapsed = (n, tsec) => { const s = Math.max(0, Math.round((n.end ?? tsec) - n.start)); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}` }
+const cls = st => ({ running: 'live', starting: 'warn', done: 'ok', failed: 'bad', gone: 'gone', idle: 'ok' }[st] || '')
+const mark = n => n.isLive ? '*' : n.status === 'failed' ? 'x' : n.status === 'gone' ? '-' : '+'
+const clock = ts => new Date(ts * 1000).toTimeString().slice(0, 8)
+let lastPanel = 0, moreTools = false
+function panel(S, tsec) {
+  const main = S.nodes.get(MAIN), live = [...S.nodes.values()].filter(n => n.id !== MAIN && n.isLive).length, last = S.prompts.at(-1)
+  el('stageTitle').innerHTML = `session <b>${esc(main.task || S.id.slice(0, 8))}</b>`
+  document.querySelector('#sess .head').innerHTML = `<span class="st">${esc(main.task || S.id.slice(0, 8))} · ${S.nodes.size - 1} agents · ${S.targets.size} destinations</span>`
+  document.querySelector('#sess .pr').textContent = last ? '> ' + last.text : ''
+  document.querySelector('#sess .pr').title = last ? last.text : ''
+  el('agents').innerHTML = [...S.nodes.values()].filter(n => n.id !== MAIN).sort((a, b) => b.start - a.start).map(n =>
+    `<div><span class="k ${cls(n.status)}">${mark(n)}</span><span>${esc(n.kind)}</span><span class="${cls(n.status)}">${esc(tagOf(n))}</span><span class="meta">${n.tools} calls ${elapsed(n, tsec)}</span></div>`).join('') || '<div class="gone">no agents yet</div>'
+  const shown = S.calls.slice(moreTools ? -200 : -15).reverse()
+  el('tools').innerHTML = shown.map(c =>
+    `<div><span class="t">${clock(c.ts)}</span><span class="who">${esc(c.agent.id === MAIN ? 'main' : tagOf(c.agent))}</span>` +
+    `<span class="tool ${c.status === 'failed' ? 'bad' : ''}" title="${esc(c.target || '')}">${esc(shortTool(c.tool))}${c.target ? ` <span class="to">${esc(c.targetKind === 'file' ? c.target.split('/').pop() : c.target)}</span>` : ''}</span><span class="ms">${fmtMs(c.ms)}</span></div>`).join('') +
+    (S.calls.length > 15 ? `<div class="more">${moreTools ? '[fewer]' : `[all ${S.calls.length}]`}</div>` : '')
+  el('stAgents').textContent = S.nodes.size - 1; el('stLive').textContent = live
+}
+el('tools').addEventListener('click', e => { if (e.target.classList.contains('more')) { moreTools = !moreTools; dirty = true } })
+for (const h of document.querySelectorAll('aside .title.toggle')) h.onclick = () => h.parentElement.classList.toggle('closed')
+const jarvisState = tsec => model.state && tsec - model.state.ts < 30 && model.state.name !== 'idle' ? model.state.name : null
+function strip(S, tsec) {
+  const main = S.nodes.get(MAIN), j = jarvisState(tsec)
+  const state = scrub ? 'replay' : j || (main.status === 'running' ? 'thinking' : main.status === 'idle' ? 'idle' : main.status)
+  el('strip').className = state; el('strip').innerHTML = `<b>${esc(state)}</b>${j ? ' · jarvis' : ''}`
+  el('stState').textContent = state
+}
+const track = el('track')
+function scrubTo(frac) {
+  const L = liveSession(); if (!L) return
+  const ts = L.start + (L.last - L.start) * Math.max(0, Math.min(1, frac))
+  const S = model.replayTo(L.id, ts).latest(); if (S) scrub = { ts, S }
+  dirty = true
+}
+let scrubbing = false, lastScrub = 0
+track.addEventListener('pointerdown', e => { scrubbing = true; track.setPointerCapture(e.pointerId); scrubTo(e.offsetX / track.clientWidth) })
+track.addEventListener('pointermove', e => { if (scrubbing && performance.now() - lastScrub > 80) { lastScrub = performance.now(); scrubTo(e.offsetX / track.clientWidth) } })
+track.addEventListener('pointerup', () => { scrubbing = false })
+const goLive = () => { scrub = null; dirty = true }
+el('liveBtn').onclick = goLive
+function bar() {
+  const L = liveSession(); if (!L) return
+  const frac = scrub ? (scrub.ts - L.start) / Math.max(1, L.last - L.start) : 1
+  track.querySelector('.fill').style.width = `${frac * 100}%`; track.querySelector('.knob').style.left = `${frac * 100}%`
+  el('liveBtn').classList.toggle('on', !scrub); el('liveBtn').textContent = scrub ? '[replay]' : '[live]'
+  document.querySelector('#bar .when').textContent = scrub ? clock(scrub.ts) : clock(L.last)
+}
+
+// ---------- Jarvis: chat panel, wake mode, live transcript ----------
+const chatLog = el('chat'), askInput = el('askInput'), speakBtn = el('speakBtn')
+const wake = { root: el('wake'), state: document.querySelector('#wake .state'), meter: document.querySelector('#wake .meter'), heard: document.querySelector('#wake .heard .txt'), reply: document.querySelector('#wake .reply'), input: el('wakeInput') }
+let speak = localStorage.getItem('hud.speak') !== '0'
+speakBtn.textContent = `[speak: ${speak ? 'on' : 'off'}]`; speakBtn.classList.toggle('on', speak)
+speakBtn.onclick = () => { speak = !speak; localStorage.setItem('hud.speak', speak ? '1' : '0'); speakBtn.textContent = `[speak: ${speak ? 'on' : 'off'}]`; speakBtn.classList.toggle('on', speak) }
+function addChat(kind, text, meta) {
+  const d = document.createElement('div'); d.className = `m ${kind}`
+  d.innerHTML = esc(text) + (meta ? `<small>${esc(meta)}</small>` : '')
+  chatLog.appendChild(d); chatLog.scrollTop = chatLog.scrollHeight
+  while (chatLog.children.length > 60) chatLog.firstChild.remove()
+}
+let typer = null, wakeIdleAt = 0
+function typeOut(elm, text, cls) {
+  clearInterval(typer); elm.className = 'reply ' + (cls || ''); elm.textContent = ''
+  let i = 0
+  typer = setInterval(() => { i += 2; elm.textContent = text.slice(0, i); elm.scrollTop = elm.scrollHeight; if (i >= text.length) clearInterval(typer) }, 12)
+}
+function enterWake(state) {
+  document.body.classList.add('wake'); setWake(state); wakeIdleAt = 0
+}
+function leaveWake() { document.body.classList.remove('wake'); clearInterval(typer); wake.heard.textContent = ''; wake.reply.textContent = '' }
+const nativeHud = window.webkit?.messageHandlers?.hud // present in the listener app's window, which fades out on 'close'
+function closeWake() { wakeIdleAt = 0; nativeHud ? nativeHud.postMessage('close') : leaveWake() } // the window fades with the wake screen still on it
+const FOOT = { listening: 'pause to send. say cancel to drop it. type below and press return. esc closes.',
+               sending: 'sending in a moment. keep talking to continue, or say cancel. esc drops it.',
+               thinking: 'say cancel, or press esc, to stop.', speaking: 'say cancel, or press esc, to stop.',
+               idle: 'done. say more, type below, or esc.' }
+function setWake(state) {
+  wake.state.innerHTML = ({ listening: '<b>listening</b>', sending: '<b>sending…</b>', thinking: 'thinking', speaking: '<b>speaking</b>', idle: 'done' })[state] || esc(state)
+  wake.root.dataset.state = state
+  document.querySelector('#wake .foot').textContent = FOOT[state] || ''
+}
+const cancel = () => fetch('/cancel', { method: 'POST', headers: { 'X-HUD-Token': HUD_TOKEN } }).catch(() => {})
+es.addEventListener('chat', e => {
+  let m; try { m = JSON.parse(e.data) } catch { return }
+  if (m.kind === 'hearing') { if (!document.body.classList.contains('wake')) enterWake('listening'); wake.heard.textContent = m.text; setWake(m.phase === 'sending' ? 'sending' : 'listening'); return }
+  if (m.kind === 'ask') { addChat('ask', m.text); fx.sentAt = performance.now(); if (document.body.classList.contains('wake')) leaveWake() } // sent: the full HUD shows the work
+  else {
+    addChat(m.kind, m.text, m.cost != null ? `$${Number(m.cost).toFixed(2)} ${fmtMs(m.ms)}` : '')
+    if (document.body.classList.contains('wake')) typeOut(wake.reply, m.text, m.kind === 'error' ? 'error' : '')
+    if (m.kind === 'answer') SOUND.chime()
+  }
+})
+async function ask(text, input) {
+  if (!text) return
+  input.value = ''
+  const r = await fetch('/ask', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-HUD-Token': HUD_TOKEN }, body: JSON.stringify({ text, speak }) }).catch(() => null)
+  if (!r || !r.ok) addChat('error', r && r.status === 409 ? 'jarvis is still answering the last one' : 'the server did not take the question')
+}
+el('askForm').onsubmit = e => { e.preventDefault(); ask(askInput.value.trim(), askInput) }
+el('wakeForm').onsubmit = e => { e.preventDefault(); ask(wake.input.value.trim(), wake.input) }
+let lastState = null
+function onState(tsec) {
+  const st = model.state
+  if (st && st !== lastState) {
+    lastState = st
+    const fresh = Date.now() / 1000 - st.ts < 20
+    if (st.name === 'listening' && fresh) { enterWake('listening'); wake.input.focus(); SOUND.prompt() }
+    else { setWake(st.name); wakeIdleAt = st.name === 'idle' ? Date.now() : 0 }
+  }
+  if (wakeIdleAt && Date.now() - wakeIdleAt > 20000 && !wake.input.value && !askInput.value) closeWake() // quiet for 20 s, nothing half typed: back to the graph, or the window fades out
+}
+const BARS = '▁▂▃▄▅▆▇█'
+function meter(now) {
+  if (!document.body.classList.contains('wake')) return
+  const on = wake.root.dataset.state === 'listening' || wake.root.dataset.state === 'sending'
+  let s = ''
+  for (let i = 0; i < 24; i++) { const v = on ? 0.5 + 0.5 * Math.sin(now / 90 + i * 0.7) * Math.sin(now / 530 + i) : 0; s += `<span>${BARS[Math.min(7, Math.floor(v * 7.99))]}</span>` }
+  wake.meter.innerHTML = s
+}
+
+// ---------- mouse: hover, drag, pin; keys ----------
+const tip = el('tip'); let mouse = null, drag = null, hovered = null
+const hit = (drawn) => { if (!mouse) return null; let best = null; for (const n of drawn) { const p = pos.get(n.id); if (p && Math.hypot(p.x - mouse.x, p.y - mouse.y) < radiusOf(n) + 4) best = n } return best }
+canvas.addEventListener('pointermove', e => { mouse = { x: e.offsetX, y: e.offsetY, px: e.clientX, py: e.clientY }; if (drag) { const p = pos.get(drag); if (p) { p.x = e.offsetX; p.y = e.offsetY; p.vx = p.vy = 0; settleUntil = performance.now() + 3000 } } })
+canvas.addEventListener('pointerdown', e => { if (hovered && hovered.id !== MAIN) { drag = hovered.id; pinned.add(drag); canvas.classList.add('grabbing'); canvas.setPointerCapture(e.pointerId) } })
+canvas.addEventListener('pointerup', () => { drag = null; canvas.classList.remove('grabbing') })
+canvas.addEventListener('dblclick', () => { if (hovered) { pinned.delete(hovered.id); settleUntil = performance.now() + 3000 } })
+canvas.addEventListener('pointerleave', () => { mouse = null; tip.style.display = 'none' })
+function hover(drawn, tsec) {
+  hovered = hit(drawn); canvas.classList.toggle('grab', !!hovered && hovered.id !== MAIN && !drag)
+  if (!hovered || drag) { tip.style.display = 'none'; return }
+  const h = hovered
+  tip.innerHTML = h.kind === 'fold' ? `<b>${h.count} ${esc(h.status)} agents</b>\n${h.members.map(m => esc(m.kind) + ' ' + esc(tagOf(m))).join(', ')}` :
+    `<b>${esc(h.kind)}</b> ${esc(tagOf(h))} ${esc(h.status)} ${elapsed(h, tsec)}${pinned.has(h.id) ? ' pinned' : ''}\n` + (h.task ? esc(h.task) + '\n' : '') +
+    `${h.tools} tool calls` + (h.lastTool ? `, last ${esc(shortTool(h.lastTool))}` : '') + (h.tokens ? `\ntokens ${tokensOf(h).toLocaleString()} (out ${h.tokens.output_tokens || 0})` : '')
+  tip.style.display = 'block'; tip.style.left = mouse.px + 14 + 'px'; tip.style.top = mouse.py + 14 + 'px'
+}
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.body.classList.contains('wake') || nativeHud) { const st = wake.root.dataset.state; if (st === 'thinking' || st === 'speaking' || st === 'sending' || st === 'listening') cancel(); closeWake() }
+    else if (e.target.tagName === 'INPUT') e.target.blur()
+    return
+  }
+  if (e.target.tagName === 'INPUT') return
+  if (e.key === '/') { e.preventDefault(); (document.body.classList.contains('wake') ? wake.input : askInput).focus(); return }
+  if (e.key === 'c') { const S = liveSession(); if (S) { S.clear(); dirty = true } }
+  if (e.key === 'f') { document.body.classList.toggle('big'); resize(); if (big() && document.fullscreenEnabled && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {}); else if (!big() && document.fullscreenElement) document.exitFullscreen().catch(() => {}) }
+  if (e.key === 'm') { muted = !muted; el('stSound').textContent = muted ? 'muted' : audio ? 'on' : 'off' }
+  if (e.key === 'l') goLive()
+})
+
+// ---------- main loop ----------
+function frame(now) {
+  const S = session()
+  if (S && synced) {
+    const tsec = scrub ? scrub.ts : Date.now() / 1000
+    if (!scrub) watch(S, now)
+    const edges = links(S, tsec), f = fold(S, edges), drawn = f.nodes, allEdges = edges.filter(e => drawn.some(n => n.id === e.to) && drawn.some(n => n.id === e.from)).concat(f.extra)
+    place(S, drawn, now); step(drawn, now); draw(S, drawn, allEdges, targetRing(S), now, tsec); hover(drawn, tsec); meter(now)
+    if (dirty || now - lastPanel > 1000) { panel(S, tsec); strip(S, tsec); bar(); onState(tsec); lastPanel = now; dirty = false }
+  } else if (synced) { meter(now); onState(Date.now() / 1000) }
+  requestAnimationFrame(frame)
+}
+requestAnimationFrame(frame)
+window.hud = { model, session, liveSession, goLive, enterWake, leaveWake, get scrub() { return scrub } }
+</script>
+</body>
+</html>

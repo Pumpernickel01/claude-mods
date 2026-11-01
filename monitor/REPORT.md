@@ -38,10 +38,18 @@ Replaced 2026-10-24: the Textual window (`monitor.py`, `monitor.sh`, AppleScript
     ],
     "SessionEnd": [
       { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/monitor/hooks/emit.py\" session_end", "timeout": 5 } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/monitor/hooks/emit.py\" prompt", "timeout": 5 } ] }
+    ],
+    "Notification": [
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/monitor/hooks/emit.py\" notification", "timeout": 5 } ] }
     ]
   }
 }
 ```
+
+The `hud` folder adds one more SessionStart entry (`hud/launch.py`, matcher `startup|resume`) that starts the HUD server.
 
 Stop / SubagentStop handlers never block (exit 0, no stdout) regardless of `stop_hook_active`.
 

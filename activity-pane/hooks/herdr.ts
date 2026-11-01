@@ -50,10 +50,13 @@ const quoted = (text: string) => `'${text.replace(/'/g, `'\\''`)}'`
 export const viewerCommand = (root: string, viewer: 'flow' | 'tools', feed: string) =>
   `exec node ${quoted(`${root}/viewer/${viewer}.mjs`)} ${quoted(feed)}`
 
-// The shell pane's command: a shell wrapped so Shift+Tab shows Agents and Agent graph.
+// The shell pane's command: a shell wrapped so Tab cycles it with Agents and Agent graph.
 export const shellCommand = (root: string, feed: string) =>
   `exec python3 ${quoted(`${root}/viewer/shell_tabs.py`)} ${quoted(feed)}`
 
-// The feed's file for the column beside one herdr pane.
-export const feedPathOf = (tmp: string, pane: string) =>
-  `${tmp.replace(/\/+$/, '')}/claude-activity/${pane.replace(/[^\w-]/g, '-')}.json`
+// The feed's file for the column beside one herdr pane, in ~/.claude/activity (made 0700: it holds
+// commands and file names), never a shared temporary folder.
+export const feedPathOf = (home: string, pane: string) =>
+  `${home.replace(/\/+$/, '')}/.claude/activity/${pane.replace(/[^\w-]/g, '-')}.json`
+
+export const feedDirOf = (feed: string) => feed.slice(0, feed.lastIndexOf('/'))

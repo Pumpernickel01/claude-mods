@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { IN_HERDR, herdr, session } from './kit'
 
-const FEED = '/tmp/t/claude-activity/w0-p1.json'
+const FEED = '/Users/me/.claude/activity/w0-p1.json'
 const START = { cwd: '/Users/me/lab2', surface: 'terminal', isInteractive: true } as const
 const RESUME = { id: 's1', isResumable: true } as never
 
@@ -26,9 +26,9 @@ test('opens the column right of Claude: data flow on top, the shell in the middl
 
   const runs = tab.runs()
   expect(runs.map(args => args[2])).toEqual(expect.arrayContaining(['w0:p2', 'w0:p4']))
-  expect(runs.find(args => args[2] === 'w0:p2')?.[3]).toMatch(/^exec node '.*\/viewer\/flow\.mjs' '\/tmp\/t\/claude-activity\/w0-p1\.json'$/)
-  expect(runs.find(args => args[2] === 'w0:p4')?.[3]).toMatch(/^exec node '.*\/viewer\/tools\.mjs' '\/tmp\/t\/claude-activity\/w0-p1\.json'$/)
-  expect(runs.find(args => args[2] === 'w0:p3')?.[3]).toMatch(/^exec python3 '.*\/viewer\/shell_tabs\.py' '\/tmp\/t\/claude-activity\/w0-p1\.json'$/)
+  expect(runs.find(args => args[2] === 'w0:p2')?.[3]).toMatch(/^exec node '.*\/viewer\/flow\.mjs' '\/Users\/me\/\.claude\/activity\/w0-p1\.json'$/)
+  expect(runs.find(args => args[2] === 'w0:p4')?.[3]).toMatch(/^exec node '.*\/viewer\/tools\.mjs' '\/Users\/me\/\.claude\/activity\/w0-p1\.json'$/)
+  expect(runs.find(args => args[2] === 'w0:p3')?.[3]).toMatch(/^exec python3 '.*\/viewer\/shell_tabs\.py' '\/Users\/me\/\.claude\/activity\/w0-p1\.json'$/)
   expect(tab.ran.filter(args => args[1] === 'rename').map(args => args.slice(2))).toEqual(
     expect.arrayContaining([['w0:p3', 'Shell'], ['w0:p2', 'Data flow'], ['w0:p4', 'Tools']]),
   )
@@ -136,12 +136,12 @@ test('falls back to the Activity pane, saying why, when herdr refuses the split'
   expect(seen.toasts[0]).toMatch(/^The herdr column could not be opened \(herdr pane split: split refused\)/)
 })
 
-test('without a TMPDIR the feed goes under ~/.claude, never the shared /tmp', async ($, on) => {
-  herdr(on)
-  const { TMPDIR: _unset, ...env } = IN_HERDR
-  const seen = session(on, { ...env, HOME: '/Users/me' })
+test('the feed lives in a folder only this user can read, under ~/.claude whatever TMPDIR says', async ($, on) => {
+  const tab = herdr(on)
+  const seen = session(on, IN_HERDR)
 
   await $.session.start(START)
 
-  expect(seen.written.at(-1)?.path).toBe('/Users/me/.claude/activity/claude-activity/w0-p1.json')
+  expect(tab.installs).toEqual([['-d', '-m', '700', '/Users/me/.claude/activity']])
+  expect(seen.written.at(-1)?.path).toBe('/Users/me/.claude/activity/w0-p1.json')
 })

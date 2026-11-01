@@ -12,12 +12,18 @@ export function herdr(on: On, { height = 61, width = 218, other }: { height?: nu
   const panes = new Map<string, number>([['w0:p1', height]])
   const ran: string[][] = []
   const failing = new Set<string>()
+  const installs: string[][] = []
   let made = 1
 
   on('process.run', (_$, e) => {
     const answer = (stdout: string, exitCode = 0, stderr = '') => ({
       value: { exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false },
     })
+    if (e.argv[0] === 'install') {
+      installs.push(e.argv.slice(1))
+
+      return answer('')
+    }
     if (e.argv[0] !== BIN) {
       const stdout = other?.(e.argv)
 
@@ -76,6 +82,7 @@ export function herdr(on: On, { height = 61, width = 218, other }: { height?: nu
     panes,
     ran,
     failing,
+    installs,
     // A viewer quit by hand: herdr hands its rows to the pane beside it.
     quit: (pane: string, into: string) => {
       panes.set(into, (panes.get(into) ?? 0) + (panes.get(pane) ?? 0))
@@ -118,4 +125,4 @@ export function session(on: On, env: Record<string, string>) {
   return { written, opened, toasts }
 }
 
-export const IN_HERDR = { HERDR_ENV: '1', HERDR_PANE_ID: 'w0:p1', HERDR_BIN_PATH: BIN, TMPDIR: '/tmp/t/' }
+export const IN_HERDR = { HERDR_ENV: '1', HERDR_PANE_ID: 'w0:p1', HERDR_BIN_PATH: BIN, TMPDIR: '/tmp/t/', HOME: '/Users/me' }

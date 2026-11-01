@@ -7,12 +7,19 @@ kinds (see REPORT.md for the hooks.json wiring):
   tool_end       PostToolUse *           tool_fail    PostToolUseFailure *
   agent_stop     SubagentStop (sums the subagent transcript's token usage)
   session_stop   Stop                    session_end  SessionEnd
+  prompt         UserPromptSubmit (first 120 chars)
+  notification   Notification (its notification_type, no message text)
+tool_end carries `target` (a file path, host or MCP server name) and `target_kind`
+(file | host | mcp) derived from the tool input; the input itself is never logged.
 Never blocks, never prints: any failure exits 0 quietly.
 """
 import json
 import os
+import re
+import shlex
 import sys
 import time
+from urllib.parse import urlsplit
 
 if "monitor" in os.environ.get("CLAUDE_MODS_DISABLE", "").split(","):
     sys.exit(0)
@@ -21,6 +28,83 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.environ.get("CLAUDE_PLUGIN_ROOT") or os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "lib"))
 from events import emit  # noqa: E402
+
+FILE_TOOLS = {"Read": "file_path", "Edit": "file_path", "Write": "file_path", "NotebookEdit": "notebook_path",
+              "Glob": "path", "Grep": "path"}
+# hosts a shell command reaches: the URL_HOST / SCP_HOST / NET rules of activity-pane/hooks/flows.ts
+URL_HOST = re.compile(r"\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp)://(?:[^\s/@'\"]+@)?(\[[^\]]+\]|[^\s/:'\"?#{}$`]+)", re.I)  # no shell/template placeholders
+SCP_HOST = re.compile(r"\b[\w.-]+@([\w.-]+):")
+NET = {"ssh", "sftp", "mosh", "telnet", "nc", "ncat", "netcat", "socat", "ping", "ping6", "traceroute", "mtr",
+       "nmap", "dig", "nslookup", "host", "ftp", "curl", "wget", "http", "https", "xh", "scp", "rsync"}
+PREFIX = {"sudo", "time", "exec", "command", "nohup", "env"}
+
+
+def hostlike(t):
+    labels = t.split(".")
+    if len(labels) < 2 or any(not 0 < len(l) <= 63 for l in labels):
+        return False
+    if all(re.fullmatch(r"[0-9]{1,3}", l) for l in labels):
+        return len(labels) == 4 and all(int(l) <= 255 for l in labels)
+    return all(re.match(r"^[\w-]+$", l) for l in labels) and labels[-1].isalpha()
+
+
+def bash_hosts(command):
+    """Hosts a shell command reaches, in order, once each. Never returns the command itself."""
+    found = []
+
+    def add(h):
+        if h and h not in found:
+            found.append(h)
+    for segment in re.split(r"\s*(?:&&|\|\||[;|\n])\s*", command or ""):
+        try:
+            tokens = shlex.split(segment)  # a quoted option value stays one token, so none of it looks like a host
+        except ValueError:
+            tokens = [t.strip("'\"") for t in segment.strip().split()]
+        while tokens and (tokens[0] in PREFIX or re.match(r"^\w+=", tokens[0])):
+            tokens.pop(0)
+        program = (tokens[0] if tokens else "").split("/")[-1]
+        before = len(found)
+        for m in URL_HOST.finditer(segment):
+            add(m.group(1).strip("[]"))
+        if program in NET or program == "git":
+            for m in SCP_HOST.finditer(segment):
+                add(m.group(1))
+        if program in NET and len(found) == before:
+            prev = ""
+            for t in tokens[1:]:
+                t, flag = re.sub(r"^[^@\s]+@", "", t), prev.startswith("-")
+                prev = t
+                # shortcut: a bare argument counts only when shaped like a host (labels of up to 63 chars, an
+                # alphabetic top-level label, or an IPv4) and does not follow an option such as -H or -u, so a
+                # token or header value is never taken for a host. Widen when a dotless host matters.
+                if not t.startswith("-") and not flag and hostlike(t):
+                    add(t)
+                    break
+    return found
+
+
+def target_of(tool, ti):
+    """(target, kind) a tool call reaches: a file path, a host or an MCP server; (None, None) otherwise."""
+    if not isinstance(ti, dict):
+        return None, None
+    if tool in FILE_TOOLS:
+        v = ti.get(FILE_TOOLS[tool])
+        return (v, "file") if isinstance(v, str) and v else (None, None)
+    if tool == "WebFetch" and isinstance(ti.get("url"), str):
+        try:
+            host = urlsplit(ti["url"]).hostname  # the parser, not a regex: user@host tricks
+        except ValueError:
+            host = None
+        return (host, "host") if host else (None, None)
+    if tool == "Bash":
+        hosts = bash_hosts(ti.get("command") if isinstance(ti.get("command"), str) else "")
+        return (hosts[0], "host") if hosts else (None, None)  # shortcut: first host only; list them when the HUD draws several
+    if isinstance(tool, str) and tool.startswith("mcp__"):
+        server = tool.split("__")[1] if tool.count("__") >= 2 else None
+        server = re.sub(r"^plugin_", "", server or "")
+        return (re.sub(r"^(.+)_\1$", r"\1", server), "mcp") if server else (None, None)  # plugin_x_x -> x
+    return None, None
+
 
 USAGE_KEYS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
 
@@ -72,14 +156,20 @@ def main():
             parent.pop("agent_type", None)
             emit("agent_start", "running", parent, parent_agent_id=data.get("agent_id"),
                  agent_type=ti.get("subagent_type") or "general-purpose", description=ti.get("description"),
-                 task=(ti.get("prompt") or "")[:120] or None, tool_use_id=data.get("tool_use_id"))
+                 task=(ti.get("prompt") or "")[:120] or None, tool_use_id=data.get("tool_use_id"),
+                 name=ti.get("name"))  # what SendMessage addresses the agent by, when it has one
         else:
             emit("agent_start", "running", data)
     elif kind in ("tool_end", "tool_fail"):
         tool = data.get("tool_name")
         to = (data.get("tool_input") or {}).get("to") if tool == "SendMessage" else None
+        try:
+            target, target_kind = target_of(tool, data.get("tool_input"))
+        except Exception:
+            target = target_kind = None  # the record is worth more than its target
         emit("tool_end", "failed" if kind == "tool_fail" else "done", data, tool=tool,
-             duration_ms=data.get("duration_ms"), tool_use_id=data.get("tool_use_id"), to=to)
+             duration_ms=data.get("duration_ms"), tool_use_id=data.get("tool_use_id"), to=to,
+             target=target, target_kind=target_kind)
     elif kind == "agent_stop":
         path = data.get("agent_transcript_path")
         emit("agent_stop", "done", data, agent_transcript_path=path, tokens=transcript_tokens(path))
@@ -87,6 +177,10 @@ def main():
         emit("session_stop", "done", data)
     elif kind == "session_end":
         emit("session_end", "done", data, reason=data.get("reason"))
+    elif kind == "prompt":
+        emit("prompt", "done", data, text=(data.get("prompt") or "")[:120] or None)
+    elif kind == "notification":
+        emit("notification", "done", data, kind=data.get("notification_type"))
 
 
 if __name__ == "__main__":
