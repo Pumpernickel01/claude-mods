@@ -129,8 +129,8 @@ test('a URL with an @ after its authority, an empty port or a variable in the ho
   await $.tool.call(bash('curl https://api.example.com:/x', 'b9'))
   const list = await flows()
 
-  // b2 (an @ in the query) and b9 (an empty port) are ambiguous: no line, rather than a guess
-  expect(list.map(flow => flow.to)).toEqual(['api.example.com', '::1', 'api.example.com', 'host.example.com', 'api.example.com', 'host.example.com'])
+  // b9 (an empty port) is ambiguous: no line, rather than a guess; b2's query @ does not touch its plain host
+  expect(list.map(flow => flow.to)).toEqual(['api.example.com', 'api.example.com', '::1', 'api.example.com', 'host.example.com', 'api.example.com', 'host.example.com'])
   expect(list.map(flow => flow.to).join()).not.toContain('TOKEN')
   expect(list.map(flow => flow.to).join()).not.toContain('@')
 })

@@ -126,7 +126,10 @@ export const targetsOf = (command: string): Target[] => {
     for (const m of words.matchAll(URL_AUTH)) {
       const [whole, authority = '', quoted = ''] = m
       const tail = /^\S*/.exec(words.slice((m.index ?? 0) + whole.length))?.[0] ?? '' // the rest of the word
-      const host = urlHost(authority, quoted.length > 1 || tail.includes('@'))
+      // a later @ in the word cuts only an authority shaped user: or user:1234 (a password with a / in it);
+      // a plain host before a query holding an @ is a host, so such a command is never left unlisted
+      const ambiguous = tail.includes('@') && !authority.includes('@') && authority.includes(':')
+      const host = urlHost(authority, quoted.length > 1 || ambiguous)
       if (host !== undefined) add({ host, what })
     }
     if (NET.has(program) || program === 'git') {

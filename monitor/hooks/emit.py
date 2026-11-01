@@ -88,8 +88,11 @@ def bash_hosts(command):
         before = len(found)
         joined = " ".join(words)
         for m in URL_AUTH.finditer(joined):
-            tail = re.match(r"\S*", joined[m.end():]).group(0)  # the rest of the word: a later @ means the authority was cut
-            add(url_host(m.group(1), cut=len(m.group(2) or "") > 1 or "@" in tail))
+            auth, tail = m.group(1), re.match(r"\S*", joined[m.end():]).group(0)
+            # a later @ in the word cuts only an authority shaped user: or user:1234 (a password with a / in it);
+            # a plain host before a query holding an @ is a host, so such a command is never left unlisted
+            ambiguous = "@" in tail and "@" not in auth and ":" in auth
+            add(url_host(auth, cut=len(m.group(2) or "") > 1 or ambiguous))
         if program in NET or program == "git":
             for m in SCP_HOST.finditer(segment):
                 add(m.group(1))
