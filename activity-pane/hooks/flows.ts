@@ -113,6 +113,7 @@ export const targetsOf = (command: string): Target[] => {
 
   for (const segment of command.split(/\s*(?:&&|\|\||[;|\n])\s*/)) {
     const tokens = segment.trim().split(/\s+/).map(unquote)
+    const words = tokens.join(' ') // URLs are read from the unquoted words, never from the raw text
     while (tokens.length > 0 && (PREFIX.has(tokens[0] ?? '') || /^\w+=/.test(tokens[0] ?? ''))) tokens.shift()
 
     const program = (tokens[0] ?? '').split('/').pop() ?? ''
@@ -120,7 +121,7 @@ export const targetsOf = (command: string): Target[] => {
     const what = program === 'git' ? `git ${sub}` : program
     const before = found.size
 
-    for (const [, authority = ''] of segment.matchAll(URL_AUTH)) {
+    for (const [, authority = ''] of words.matchAll(URL_AUTH)) {
       const host = urlHost(authority)
       if (host !== undefined) add({ host, what })
     }

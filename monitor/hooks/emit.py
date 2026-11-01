@@ -47,8 +47,8 @@ def url_host(authority):
     if hostport.startswith("[") and "]" in hostport:
         host, rest = hostport[1:hostport.index("]")], hostport[hostport.index("]") + 1:]
     else:
-        host, _, rest = hostport.partition(":")
-        rest = ":" + rest if rest else ""
+        host, sep, port = hostport.partition(":")
+        rest = sep + port  # a bare trailing colon (TOKEN:'pw'@host cut at the quote) is not a port
     if not host or (not user and rest and not re.fullmatch(r":\d+", rest)):
         return None
     return host
@@ -79,11 +79,12 @@ def bash_hosts(command):
             tokens = shlex.split(segment)  # a quoted option value stays one token, so none of it looks like a host
         except ValueError:
             tokens = [t.strip("'\"") for t in segment.strip().split()]
+        words = list(tokens)  # URLs are read from the shell's words, quotes resolved, never from the raw text
         while tokens and (tokens[0] in PREFIX or re.match(r"^\w+=", tokens[0])):
             tokens.pop(0)
         program = (tokens[0] if tokens else "").split("/")[-1]
         before = len(found)
-        for m in URL_AUTH.finditer(segment):
+        for m in URL_AUTH.finditer(" ".join(words)):
             add(url_host(m.group(1)))
         if program in NET or program == "git":
             for m in SCP_HOST.finditer(segment):
