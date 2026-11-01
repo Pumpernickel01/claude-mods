@@ -31,10 +31,18 @@ from events import emit  # noqa: E402
 
 FILE_TOOLS = {"Read": "file_path", "Edit": "file_path", "Write": "file_path", "NotebookEdit": "notebook_path",
               "Glob": "path", "Grep": "path"}
-# hosts a shell command reaches: the URL_HOST / SCP_HOST / NET rules of activity-pane/hooks/flows.ts
-# userinfo greedy up to the authority's last @ (never past ? or #, where the authority ends), no @ in the host, and the
-# host must end at a real boundary: a password holding an @, a query holding one, or a $VAR is never taken for a host
-URL_HOST = re.compile(r"\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp)://(?:[^\s/?#'\"]+@)?(\[[^\]]+\]|[^\s/:@'\"?#{}$`]+)(?=[\s/:'\"?#]|$)", re.I)
+# hosts a shell command reaches: the URL_AUTH / SCP_HOST / NET rules of activity-pane/hooks/flows.ts
+# the whole authority (up to / ? # or a quote), one unit: url_host() takes the host out of it, so a regex can
+# never backtrack into a password and call it the host
+URL_AUTH = re.compile(r"\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp)://([^\s/?#'\"]+)", re.I)
+
+
+def url_host(authority):
+    """The host of a URL authority: after the last @, before the port; None when it holds a shell or template
+    placeholder ($, backtick, braces), so a host cut by a variable is never half-logged."""
+    host = authority.rsplit("@", 1)[-1]
+    host = host[1:host.index("]")] if host.startswith("[") and "]" in host else host.split(":", 1)[0]
+    return host if host and not re.search(r"[${}`]", host) else None
 SCP_HOST = re.compile(r"\b[\w.-]+@([\w.-]+):")
 NET = {"ssh", "sftp", "mosh", "telnet", "nc", "ncat", "netcat", "socat", "ping", "ping6", "traceroute", "mtr",
        "nmap", "dig", "nslookup", "host", "ftp", "curl", "wget", "http", "https", "xh", "scp", "rsync"}
@@ -66,8 +74,8 @@ def bash_hosts(command):
             tokens.pop(0)
         program = (tokens[0] if tokens else "").split("/")[-1]
         before = len(found)
-        for m in URL_HOST.finditer(segment):
-            add(m.group(1).strip("[]"))
+        for m in URL_AUTH.finditer(segment):
+            add(url_host(m.group(1)))
         if program in NET or program == "git":
             for m in SCP_HOST.finditer(segment):
                 add(m.group(1))

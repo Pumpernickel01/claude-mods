@@ -58,9 +58,18 @@ export const mcpOf = (tool: string) => {
   return { to: server, tool: name }
 }
 
-// userinfo greedy up to the authority's last @ (never past ? or #, where the authority ends), no @ in the host, and the
-// host must end at a real boundary: a password holding an @, a query holding one, or a $VAR is never taken for a host
-const URL_HOST = /\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp):\/\/(?:[^\s/?#'"]+@)?(\[[^\]]+\]|[^\s/:@'"?#$`{}]+)(?::(\d+))?(?=[\s/:'"?#]|$)/gi
+// The whole authority (up to / ? # or a quote), one unit: urlHost takes the host out of it, so a regex can
+// never backtrack into a password and call it the host.
+const URL_AUTH = /\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp):\/\/([^\s/?#'"]+)/gi
+
+// The host of a URL authority: after the last @, before the port; none when it holds a shell or template
+// placeholder ($, backtick, braces), so a host cut by a variable is never half-logged.
+const urlHost = (authority: string) => {
+  const afterUser = authority.slice(authority.lastIndexOf('@') + 1)
+  const host = afterUser.startsWith('[') && afterUser.includes(']') ? afterUser.slice(1, afterUser.indexOf(']')) : afterUser.split(':')[0] ?? ''
+
+  return host !== '' && !/[${}`]/.test(host) ? host : undefined
+}
 const SCP_HOST = /\b[\w.-]+@([\w.-]+):/g
 const IPV4 = /(?<![\d.])((?:\d{1,3}\.){3}\d{1,3})(?::(\d+))?(?![\d.])/g
 const APP = /tell application "([^"]+)"/g
@@ -105,7 +114,10 @@ export const targetsOf = (command: string): Target[] => {
     const what = program === 'git' ? `git ${sub}` : program
     const before = found.size
 
-    for (const [, host = ''] of segment.matchAll(URL_HOST)) add({ host: host.replace(/^\[|\]$/g, ''), what })
+    for (const [, authority = ''] of segment.matchAll(URL_AUTH)) {
+      const host = urlHost(authority)
+      if (host !== undefined) add({ host, what })
+    }
     if (NET.has(program) || program === 'git') {
       for (const [, host = ''] of segment.matchAll(SCP_HOST)) add({ host, what })
     }
