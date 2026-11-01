@@ -109,7 +109,8 @@ def open_window(big=False):
     if pids():
         running_full = subprocess.run(["pgrep", "-f", f"user-data-dir={PROFILE_FULL}"], capture_output=True).returncode == 0
         if running_full == big:
-            subprocess.run(["osascript", "-e", f'tell application "{BROWSER}" to activate'], capture_output=True)
+            subprocess.run(["osascript", "-e", "on run argv", "-e", "tell application (item 1 of argv) to activate",
+                            "-e", "end run", "--", BROWSER], capture_output=True)
             return
         close_window()
         for _ in range(30):

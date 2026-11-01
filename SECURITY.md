@@ -3,8 +3,11 @@
 ## What this repo is, security-wise
 
 Hooks run with the user's full privileges on every tool call. MCP servers are
-local stdio child processes of Claude Code. Nothing here listens on a network
-port, stores credentials, or does its own cryptography. The repo is PUBLIC.
+local stdio child processes of Claude Code. Nothing here stores credentials or
+does its own cryptography. One thing listens on a port: the HUD's server, on
+127.0.0.1 only, with a Host and Origin check and a per-run token on every
+request that acts (`hud/README.md`); any process of the same user can still
+read it, as it can read the files it draws from. The repo is PUBLIC.
 So the risks are: (1) a hook or server doing something destructive or leaking
 data, (2) the repo itself leaking private information, (3) the delivery path
 (GitHub over SSH) being tampered with. The rules below address those three.
