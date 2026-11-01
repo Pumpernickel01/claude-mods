@@ -58,8 +58,9 @@ export const mcpOf = (tool: string) => {
   return { to: server, tool: name }
 }
 
-// userinfo greedy up to the authority's last @ and no @ in the host, so a password holding an @ is never taken for a host
-const URL_HOST = /\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp):\/\/(?:[^\s/'"]+@)?(\[[^\]]+\]|[^\s/:@'"?#]+)(?::(\d+))?/gi
+// userinfo greedy up to the authority's last @ (never past ? or #, where the authority ends), no @ in the host, and the
+// host must end at a real boundary: a password holding an @, a query holding one, or a $VAR is never taken for a host
+const URL_HOST = /\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp):\/\/(?:[^\s/?#'"]+@)?(\[[^\]]+\]|[^\s/:@'"?#$`{}]+)(?::(\d+))?(?=[\s/:'"?#]|$)/gi
 const SCP_HOST = /\b[\w.-]+@([\w.-]+):/g
 const IPV4 = /(?<![\d.])((?:\d{1,3}\.){3}\d{1,3})(?::(\d+))?(?![\d.])/g
 const APP = /tell application "([^"]+)"/g

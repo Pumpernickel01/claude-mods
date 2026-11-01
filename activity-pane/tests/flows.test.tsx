@@ -114,6 +114,19 @@ test('a shell command gets a line for each place it reaches, the local network m
   expect(list[0]?.detail).toBe('curl -X POST http://192.168.4.1/led && ssh pi@raspberrypi.local uptime')
 })
 
+test('an @ in a URL password or query never names the host, and a host cut by a variable is none', async ($, on) => {
+  const { flows } = setUp(on)
+  await $.session.start(START)
+
+  await $.tool.call(bash('curl https://user:p@ss@api.example.com/x', 'b1'))
+  await $.tool.call(bash('curl https://api.example.com?to=a@evil.com', 'b2'))
+  await $.tool.call(bash('curl https://api.example.com$SUFFIX/x', 'b3'))
+  const list = await flows()
+
+  expect(list.map(flow => flow.to)).toEqual(['api.example.com', 'api.example.com'])
+  expect(list.map(flow => flow.to).join()).not.toContain('@')
+})
+
 test('commands that reach nothing, and calls that were denied, make no line', async ($, on) => {
   const { flows } = setUp(on)
   await $.session.start(START)
