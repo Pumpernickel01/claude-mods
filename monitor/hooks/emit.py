@@ -46,13 +46,16 @@ def url_host(authority, cut=False):
     if cut or re.search(r"[${}`\\]", authority):
         return None
     user, _, hostport = authority.rpartition("@")
-    if hostport.startswith("[") and "]" in hostport:
+    bracket = hostport.startswith("[") and "]" in hostport
+    if bracket:
         host, rest = hostport[1:hostport.index("]")], hostport[hostport.index("]") + 1:]
     else:
         host, sep, port = hostport.partition(":")
         rest = sep + port
-    if not host or (not user and rest and not re.fullmatch(r":\d*", rest)):
+    if not host:
         return None
+    if not user and (rest and not re.fullmatch(r":\d*", rest) or not (bracket or host == "localhost" or hostlike(host))):
+        return None  # with no userinfo the host must look like one: a bare token before a port is no host
     return host
 SCP_HOST = re.compile(r"\b[\w.-]+@([\w.-]+):")
 NET = {"ssh", "sftp", "mosh", "telnet", "nc", "ncat", "netcat", "socat", "ping", "ping6", "traceroute", "mtr",
@@ -77,6 +80,7 @@ def segments_of(command):
     them, so a quoted separator or space stays inside its word. None when the quotes do not balance."""
     lex = shlex.shlex(command or "", posix=True, punctuation_chars=";|&\n")
     lex.whitespace, lex.whitespace_split = " \t\r", True
+    lex.commenters = ""  # shlex would start a comment at a # inside a word and swallow TOKEN:123#x@host's @
     segments = [[]]
     try:
         for word in lex:
@@ -112,7 +116,10 @@ def bash_hosts(command):
             found.append(h)
     segments = segments_of(command)
     if segments is None:
-        return [UNRESOLVED] if URL_AUTH.search(command or "") else []  # unbalanced quotes: nothing is read as a host
+        # unbalanced quotes: nothing is read as a host, but a command that looks like a network call is listed
+        lines = re.split(r"[\n;|&]+", command or "")
+        is_net = any((line.split() or [""])[0].split("/")[-1] in NET | {"git"} for line in lines)
+        return [UNRESOLVED] if is_net or URL_AUTH.search(command) or SCP_HOST.search(command) else []
     for words in segments:
         tokens = list(words)
         while tokens and (tokens[0] in PREFIX or re.match(r"^\w+=", tokens[0])):

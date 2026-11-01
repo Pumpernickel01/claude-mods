@@ -76,7 +76,9 @@ const urlHost = (authority: string, cut: boolean) => {
   const bracket = hostport.startsWith('[') ? hostport.indexOf(']') : -1
   const host = bracket > 0 ? hostport.slice(1, bracket) : hostport.split(':')[0] ?? ''
   const rest = bracket > 0 ? hostport.slice(bracket + 1) : hostport.slice(host.length)
-  if (host === '' || (at <= 0 && rest !== '' && !/^:\d*$/.test(rest))) return undefined
+  if (host === '') return undefined
+  // with no userinfo the host must look like one: a bare token before a port is no host
+  if (at <= 0 && ((rest !== '' && !/^:\d*$/.test(rest)) || !(bracket > 0 || host === 'localhost' || HOSTLIKE.test(host)))) return undefined
 
   return host
 }
@@ -126,6 +128,8 @@ const segmentsOf = (command: string): string[][] | undefined => {
     } else if (ch === "'" || ch === '"') {
       quote = ch
       inWord = true
+    } else if (ch === '#' && !inWord) {
+      while (i + 1 < command.length && command[i + 1] !== '\n') i += 1 // a comment, as the shell reads one: at a word's start only
     } else if (ch === '\\' && i + 1 < command.length) {
       word += command[(i += 1)]
       inWord = true
@@ -171,7 +175,10 @@ export const targetsOf = (command: string): Target[] => {
 
   const segments = segmentsOf(command)
   if (segments === undefined) {
-    if (/:\/\//.test(command)) add({ host: UNRESOLVED, what: 'shell' }) // unbalanced quotes: nothing is read as a host
+    // unbalanced quotes: nothing is read as a host, but a command that looks like a network call is listed
+    const programs = command.split(/[\n;|&]+/).map(line => line.trim().split(/\s+/)[0]?.split('/').pop() ?? '')
+    const net = programs.find(program => NET.has(program) || program === 'git')
+    if (net !== undefined || /:\/\//.test(command) || SCP_HOST.test(command)) add({ host: UNRESOLVED, what: net ?? 'shell' })
 
     return [...found.values()]
   }

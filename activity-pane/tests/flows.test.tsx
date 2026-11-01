@@ -130,15 +130,22 @@ test('a URL with an @ after its authority, an empty port or a variable in the ho
   await $.tool.call(bash('curl https://u:p@ss/w@host/ https://AbC/xyz@host/ https://user:p@ss/word@host/', 'b10'))
   await $.tool.call(bash("curl 'https://TOKEN:1234;pw@host/' 'https://TOKEN;x@host/'", 'b11'))
   await $.tool.call(bash('curl "https://api.example.com', 'b12'))
+  await $.tool.call(bash('curl https://TOKEN:123#x@host/ https://TOKEN:/pw#x@host/', 'b13'))
+  await $.tool.call(bash('echo a#b; curl https://api.example.com/ # not https://evil.com', 'b14'))
+  await $.tool.call(bash('curl http://nas:5000/ && curl http://localhost:8080/', 'b15'))
+  await $.tool.call(bash(`ssh box.example.net "echo it's`, 'b16'))
   const list = await flows()
 
   // One line per command: b1 and b2 name their host (a query @ does not touch a plain host); b3 (a variable),
   // b4 (a token before a variable host), b6 and b8 (an unbalanced quote makes the whole command unresolved),
   // b10 (a later @ after userinfo or a bare word) and b12 are listed but withheld; b5 is IPv6; b7 reads whole;
-  // b9's empty port is a port; b11's quoted ; stays in its word and names host, not the token
+  // b9's empty port is a port; b11's quoted ; stays in its word and names host, not the token; b13's # inside a
+  // word is no comment; b14's # at a word's start is one; b15's dotless nas is unresolved, localhost itself;
+  // b16's unbalanced quote on a net command is still listed
   expect(list.map(flow => flow.to)).toEqual([
     'api.example.com', 'api.example.com', '(unresolved host)', '(unresolved host)', '::1', '(unresolved host)',
     'host.example.com', 'api.example.com', '(unresolved host)', 'api.example.com', '(unresolved host)', 'host', '(unresolved host)',
+    '(unresolved host)', 'api.example.com', '(unresolved host)', 'localhost', '(unresolved host)',
   ])
   expect(JSON.stringify(list.map(flow => flow.to))).not.toContain('TOKEN')
   expect(list.map(flow => flow.to).join()).not.toContain('TOKEN')
