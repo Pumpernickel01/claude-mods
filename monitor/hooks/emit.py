@@ -41,7 +41,7 @@ def url_host(authority, cut=False):
     """The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
     template placeholder ($, backtick, braces, backslash) anywhere, when a quote cut it short with more text behind
     (an unbalanced TOKEN'x@host), or when, with no @, what follows the host is not a port: an authority
-    cut at user:p must not log its username as a host. An empty port (host:/) is a port."""
+    cut at user:p must not log its username as a host. An empty port (TOKEN:/pw@host) is no port."""
     if cut or re.search(r"[${}`\\]", authority):
         return None
     user, _, hostport = authority.rpartition("@")
@@ -49,8 +49,8 @@ def url_host(authority, cut=False):
         host, rest = hostport[1:hostport.index("]")], hostport[hostport.index("]") + 1:]
     else:
         host, sep, port = hostport.partition(":")
-        rest = sep + port  # a bare trailing colon (TOKEN:'pw'@host cut at the quote) is not a port
-    if not host or (not user and rest and not re.fullmatch(r":\d*", rest)):
+        rest = sep + port  # a bare trailing colon (TOKEN:/pw@host, cut at the slash) is not a port
+    if not host or (not user and rest and not re.fullmatch(r":\d+", rest)):
         return None
     return host
 SCP_HOST = re.compile(r"\b[\w.-]+@([\w.-]+):")

@@ -65,7 +65,7 @@ const URL_AUTH = /\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp):\/\/([^\s/?#'"]
 // The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
 // template placeholder ($, backtick, braces, backslash) anywhere, when a quote cut it short with more text behind
 // (an unbalanced TOKEN'x@host), or when, with no @, what follows the host is not a port: an authority cut at
-// user:p must not log its username as a host. An empty port (host:/) is a port.
+// user:p must not log its username as a host. An empty port (TOKEN:/pw@host) is no port.
 const urlHost = (authority: string, cut: boolean) => {
   if (cut || /[${}`\\]/.test(authority)) return undefined
   const at = authority.lastIndexOf('@')
@@ -73,7 +73,7 @@ const urlHost = (authority: string, cut: boolean) => {
   const bracket = hostport.startsWith('[') ? hostport.indexOf(']') : -1
   const host = bracket > 0 ? hostport.slice(1, bracket) : hostport.split(':')[0] ?? ''
   const rest = bracket > 0 ? hostport.slice(bracket + 1) : hostport.slice(host.length)
-  if (host === '' || (at === -1 && rest !== '' && !/^:\d*$/.test(rest))) return undefined
+  if (host === '' || (at === -1 && rest !== '' && !/^:\d+$/.test(rest))) return undefined
 
   return host
 }
