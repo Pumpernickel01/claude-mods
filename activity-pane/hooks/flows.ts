@@ -62,13 +62,19 @@ export const mcpOf = (tool: string) => {
 // never backtrack into a password and call it the host.
 const URL_AUTH = /\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp):\/\/([^\s/?#'"]+)/gi
 
-// The host of a URL authority: after the last @, before the port; none when it holds a shell or template
-// placeholder ($, backtick, braces), so a host cut by a variable is never half-logged.
+// The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
+// template placeholder ($, backtick, braces, backslash) anywhere, or when, with no @, what follows the host is
+// not a numeric port: an authority a quote cut short (user:p'ss@host) must not log its username as a host.
 const urlHost = (authority: string) => {
-  const afterUser = authority.slice(authority.lastIndexOf('@') + 1)
-  const host = afterUser.startsWith('[') && afterUser.includes(']') ? afterUser.slice(1, afterUser.indexOf(']')) : afterUser.split(':')[0] ?? ''
+  if (/[${}`\\]/.test(authority)) return undefined
+  const at = authority.lastIndexOf('@')
+  const hostport = authority.slice(at + 1)
+  const bracket = hostport.startsWith('[') ? hostport.indexOf(']') : -1
+  const host = bracket > 0 ? hostport.slice(1, bracket) : hostport.split(':')[0] ?? ''
+  const rest = bracket > 0 ? hostport.slice(bracket + 1) : hostport.slice(host.length)
+  if (host === '' || (at === -1 && rest !== '' && !/^:\d+$/.test(rest))) return undefined
 
-  return host !== '' && !/[${}`]/.test(host) ? host : undefined
+  return host
 }
 const SCP_HOST = /\b[\w.-]+@([\w.-]+):/g
 const IPV4 = /(?<![\d.])((?:\d{1,3}\.){3}\d{1,3})(?::(\d+))?(?![\d.])/g

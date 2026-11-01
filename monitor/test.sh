@@ -51,6 +51,8 @@ check "a credential before a variable host is not the host" "$(field target)" "N
 check "  nor logged" "$(tail -1 "$LOG" | grep -c 'TOKEN')" "0"
 hook tool_end "{$BASE,\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"curl http://[::1]:8080/x https://user@[2001:db8::1]/y\"},\"tool_use_id\":\"t5k\"}"
 check "an IPv6 host keeps its brackets off and its port off" "$(field target)" "::1"
+hook tool_end "{$BASE,\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"curl https://user:p'ss@host/ https://api.example.com:8080/x\"},\"tool_use_id\":\"t5l\"}"
+check "a username before a quote-cut password is not a host; a numeric port is fine" "$(field target)" "api.example.com"
 hook tool_end "{$BASE,\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo http://{host}/x\"},\"tool_use_id\":\"t5g\"}"
 check "a placeholder is not a host" "$(field target)" "None"
 hook tool_end "{$BASE,\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"mcp__plugin_playwright_playwright__browser_navigate\",\"tool_input\":{\"url\":\"x\"},\"tool_use_id\":\"t5c\"}"

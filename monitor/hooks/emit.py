@@ -38,11 +38,20 @@ URL_AUTH = re.compile(r"\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp)://([^\s/?
 
 
 def url_host(authority):
-    """The host of a URL authority: after the last @, before the port; None when it holds a shell or template
-    placeholder ($, backtick, braces), so a host cut by a variable is never half-logged."""
-    host = authority.rsplit("@", 1)[-1]
-    host = host[1:host.index("]")] if host.startswith("[") and "]" in host else host.split(":", 1)[0]
-    return host if host and not re.search(r"[${}`]", host) else None
+    """The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
+    template placeholder ($, backtick, braces, backslash) anywhere, or when, with no @, what follows the host is
+    not a numeric port: an authority a quote cut short (user:p'ss@host) must not log its username as a host."""
+    if re.search(r"[${}`\\]", authority):
+        return None
+    user, _, hostport = authority.rpartition("@")
+    if hostport.startswith("[") and "]" in hostport:
+        host, rest = hostport[1:hostport.index("]")], hostport[hostport.index("]") + 1:]
+    else:
+        host, _, rest = hostport.partition(":")
+        rest = ":" + rest if rest else ""
+    if not host or (not user and rest and not re.fullmatch(r":\d+", rest)):
+        return None
+    return host
 SCP_HOST = re.compile(r"\b[\w.-]+@([\w.-]+):")
 NET = {"ssh", "sftp", "mosh", "telnet", "nc", "ncat", "netcat", "socat", "ping", "ping6", "traceroute", "mtr",
        "nmap", "dig", "nslookup", "host", "ftp", "curl", "wget", "http", "https", "xh", "scp", "rsync"}
