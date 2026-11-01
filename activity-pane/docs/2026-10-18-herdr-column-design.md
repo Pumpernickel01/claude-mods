@@ -85,7 +85,7 @@ failed ones still do (the data was sent).
   short) when the process ends: `/exit`, ctrl+c or ctrl+d, logout, a signal.
   `/clear` and a resume keep them.
 - **Feed.** The mod writes one JSON document, `{ calls, flows }` (last 500 of
-  each), to `$TMPDIR/claude-activity/<herdr pane>.json` after each change,
+  each), to `~/.claude/activity/<herdr pane>.json` (a folder made 0700) after each change,
   coalescing bursts. The viewers poll it and keep the last good copy when a read
   catches the file mid-write. It lives outside the mod folder so writes never
   hot-reload the mod.
@@ -124,3 +124,116 @@ the claude-mods plugin's monitor hooks, for the session the feed now names
 (`session`). A column made before this keeps its plain shell until the shell
 pane is made again (or the command is run in it by hand).
 Tests: `python3 viewer/shell_tabs_test.py` (views, and the wrapper in a real pty).
+
+## Addendum 2026-10-24 (later): live Agents views
+
+Agents shows a spawn at once (`starting`, from the PreToolUse `Agent` record),
+joins it to its SubagentStart by agent type, indents sub-agents under their
+parent, greys finished agents out instead of dropping them, retires agents
+still live when the session ends or starts again (`gone`), and lists who
+started, messaged or answered whom. Agent graph draws sub-agents as a tree and
+streams dots along every edge whose agents talk now (parent to child while the
+child runs, back as it returns, sender to receiver for 8 s after a message).
+Views poll the log every redraw: 10 a second in the graph, 4 in the table.
+Agents never seen starting (engine forks) are not shown. The feed moved from
+`$TMPDIR` to `~/.claude/activity` (0700), and `tagOf` applies address ranges to
+IPv4 addresses only, after a security review.
+
+## Addendum 2026-10-24 (evening): Tab, scrolling, a graph that stays a tree, clear
+
+After a test run of 10 agents each spawning 5 (only 20 can run at once, so 40
+spawns failed), the user asked for four changes:
+
+- **Tab cycles from the shell too:** Shell → Agents → Agent graph → Shell,
+  Shift+Tab back one everywhere (from the shell that is now Agent graph). Tab
+  switches only when it arrives alone in a read (a paste with a tab in it goes
+  to the shell) and while the shell itself is the pty's foreground process
+  group, so vim, a REPL or `claude` run in the shell keep their Tab. It gives
+  up zsh's Tab completion at that pane's prompt; the user accepted that.
+- **Scrolling:** arrows, PgUp/PgDn and the wheel scroll Agents and the graph
+  when they are taller than the pane; a row tells where (`rows 1–6 of 61`).
+  Views turn on SGR mouse reports (1000 + 1006) for the wheel and hand the mode
+  back on return as the shell's program last set it. This replaces the old
+  overflow rule (main + live + newest finished), so at the top of a long table
+  a just-spawned agent can be below the fold.
+- **The graph stays one tree:** agents in a single column, sub-agents indented
+  under their parent, never wrapped into further columns (the wrap broke spawn
+  edges across columns). Taller than the pane, finished sibling leaves fold
+  into one node per parent and status (`[✗ 5 failed]`, `[5 done]`); live or
+  talking agents never fold. Still too tall, it scrolls with the main session
+  at the top. Names are cut in the middle so the id tail stays readable
+  (`general-purpo…·7552`), and graph labels got 24 cells.
+- **`c` clears finished agents** (done, failed, gone) and the exchanges they
+  were in from both views; a live agent whose parent is cleared moves under
+  main. It lasts until the pane restarts and re-reads the log.
+
+## Addendum 2026-10-24 (night): the graph scatters around a centred main
+
+The single column from the evening addendum clustered a session with many
+agents into one tall stripe. The graph now works like Obsidian's graph view:
+the main session sits in the middle of the pane, each agent lands on a ring
+around it at an angle seeded from its spawn time (`zlib.crc32`, so a node
+keeps its place from frame to frame and across restarts), and every
+sub-agent lands on a tighter ring around the agent that spawned it. A taken
+spot steps on by the golden angle, every eighth try one ring further out, so
+siblings spawned together fan out instead of piling up. Edges are straight
+Bresenham lines (`─ │ ╱ ╲`), messages drawn every other cell for the dashed
+look, and the dots stream along them as before. Folding now triggers on
+capacity (labels on every other row) rather than column height, and a graph
+that still does not fit grows downward and scrolls with main in the first
+screen.
+
+## Addendum 2026-10-24 (late): a left-to-right tree with box-drawing elbows
+
+Testing the scatter with 10 agents and their sub-agents, the user found the
+edges jagged and the lines and labels crossing one another. Both come from the
+scatter itself: a straight line between two arbitrary cells can only stair-step
+on a character grid, and rings around a hub put labels in each other's way.
+The graph is now a layered tree. The main session sits at the left, its agents
+in a column `GAP` (4) cells to its right, every sub-agent in the column after
+the agent that spawned it; leaves take rows top to bottom in spawn order (a
+blank row between them while they fit) and a parent sits level with the middle
+of its children, so a label never shares a cell with another. Edges are
+orthogonal: a parent's stub runs into one bus two cells before its children's
+column, which branches into each child (`╭ ├ ╰`, `┼` where a child is level
+with the parent). Each cell collects the directions of every edge through it
+and a 16-entry table picks the glyph, so shared buses and honest crossings
+render as junctions, never as overdrawn fragments. Messages run on the gutter
+cell left of the spawn bus (or right of a column, for a receiver at the left or
+in the same column), dashed on straight cells with corners kept; they can still
+cross spawn edges, which shows as `┼`. The tree is centred in the pane when it
+is smaller than it, folds finished sibling leaves when there are more leaves
+than rows, and scrolls when still too tall. A deep tree in a narrow pane
+squeezes label widths down to 8 cells. `Node.seed`, `zlib` and `math` left with
+the scatter.
+
+## Addendum 2026-10-24 (later): a force-directed graph with elbow edges
+
+The left-to-right tree read to the user as the single column they had already
+rejected. What they want is the Obsidian look, force-directed, with smooth
+lines and no node overlapping another. `layout()` now runs Fruchterman-Reingold
+once per change of node set or pane size (cached in `_layouts`): the main
+session is pinned to the middle, every node starts on a ring around its parent
+at an angle from `zlib.crc32` of its kind and spawn seed (`Node.seed` is
+back), nodes repel by k²/d and spawn edges pull by d²/k, in a space where a
+column is a seventh of a unit and a row half of one so a label is about a
+round blob and k shares the area out evenly. Then each label, in spawn order,
+takes the free row nearest the one the simulation gave it (rows in the view
+first), so no two share columns on the same or the next row; the canvas grows and scrolls if the pane cannot hold them,
+and an assert guards the no-overlap promise. Edges keep the direction-mask
+renderer from the tree: a lying elbow through the gap between labels side by
+side, a standing one through the rows between them otherwise, each choosing
+the bus column or row that crosses the fewest label cells. Accepted: edges can
+cross each other (`┼`) and may still pass under a label when every candidate
+does; positions shift when an agent joins, as Obsidian's do.
+
+## Addendum 2026-11-01: Roster and Keepsake in the Shell pane, Guide gone
+
+Two memo views join the Shell pane's cycle, Agents → Agent graph → **Roster** →
+**Keepsake** → Shell. Roster lists the subagents in `~/.claude/agents` and the
+project's `.claude/agents` (frontmatter `name` and `description`, the later
+folder winning a name), Keepsake shows `~/.claude/keepsake.md`. Both are
+Markdown drawn by `md_rows` (stdlib `textwrap`), read at each redraw. They went
+to the Shell pane, not the Tools pane, because a memo needs rows: Tools has
+four. The Data flow pane's Guide tab was removed for the same reason; the file
+`~/.claude/workflow-guide.md` is left where it is.

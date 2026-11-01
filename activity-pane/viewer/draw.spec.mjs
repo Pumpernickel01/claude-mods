@@ -8,15 +8,11 @@ import {
   cellsOf,
   clean,
   drawFlow,
-  drawGuide,
   drawTools,
   fit,
   flowLineOf,
-  guideLinesOf,
   moveFlow,
-  scrollGuide,
   scrollTools,
-  wrapOf,
 } from './draw.mjs'
 
 const plain = line => line.replace(/\x1b\[[\d;]*m/g, '')
@@ -69,7 +65,7 @@ test('the flow pane shows a header, the newest flows that fit, and the newest on
   const lines = drawFlow(feed, { selected: null, end: null }, 9, 100).map(plain)
 
   assert.equal(lines.length, 9)
-  assert.match(lines[0], /^Data flow │ Guide \(Tab\) · 20 transfers .*↑↓ pick a line$/)
+  assert.match(lines[0], /^Data flow · 20 transfers .*↑↓ pick a line$/)
   assert.match(lines[1], /host13\.example\.com/)
   assert.match(lines[7], /host19\.example\.com/)
   assert.match(lines[8], /└ curl https:\/\/host19\.example\.com/)
@@ -141,63 +137,6 @@ test('keys, the wheel and a click read as actions', () => {
   assert.deepEqual(actionsOf('\x1b[<0;10;4M\x1b[<0;10;4m'), [{ kind: 'click', row: 4 }])
   assert.deepEqual(actionsOf('\x1b[5~\x1b[6~gGq').map(a => a.kind), ['pageUp', 'pageDown', 'top', 'bottom', 'quit'])
   assert.deepEqual(actionsOf('x\x1b[1;5Cz'), [])
-  assert.deepEqual(actionsOf('\t'), [{ kind: 'tab' }])
-})
-
-const GUIDE = [
-  '# How I work',
-  '',
-  '## One ticket',
-  '1. Run `/jira-workflow start ICRM-<n>` to claim the issue before anything else is discussed.',
-  '- Say what **done** looks like.',
-  ...Array.from({ length: 20 }, (_, n) => `- line ${n}`),
-].join('\n')
-
-test('wrapping keeps every row within the width, hangs it under the lead and splits a word too long', () => {
-  const rows = wrapOf('one two three four five six seven 日本語のテキストです 🙂🙂 abcdefghijklmnopqrstuvwxyz', 12, '• ')
-
-  assert.equal(rows[0], '• one two')
-  assert.ok(rows.slice(1).every(row => row.startsWith('  ')))
-  assert.ok(rows.every(row => cellsOf(row) <= 12), rows.join('|'))
-  assert.equal(rows.join('').replace(/[•\s]/g, ''), 'onetwothreefourfivesixseven日本語のテキストです🙂🙂abcdefghijklmnopqrstuvwxyz')
-  assert.deepEqual(wrapOf('`code` here', 9), ['`code` here'])
-})
-
-test('the guide reads as headings, steps and bullets, its marks hidden, within the width', () => {
-  const lines = guideLinesOf(GUIDE, 40).map(plain)
-
-  assert.equal(lines[0], 'How I work')
-  assert.equal(lines[3], '1. Run /jira-workflow start ICRM-<n> to')
-  assert.match(lines[4], /^ {3}claim/)
-  assert.ok(lines.includes('• Say what done looks like.'))
-  assert.ok(lines.every(line => cellsOf(line) <= 40))
-})
-
-test('the guide tab shows both tabs, the guide from the top, and scrolls within it', () => {
-  const rows = 9
-  const total = guideLinesOf(GUIDE, 90).length
-  let view = { top: 0 }
-  let lines = drawGuide(GUIDE, '~/.claude/workflow-guide.md', view, rows, 90).map(plain)
-
-  assert.equal(lines.length, rows)
-  assert.match(lines[0], /^Data flow \(Tab\) │ Guide · ~\/\.claude\/workflow-guide\.md .*▼ \d+ more$/)
-  assert.equal(lines[1], 'How I work')
-
-  view = scrollGuide(view, { kind: 'down' }, total, rows)
-  assert.deepEqual(view, { top: 1 })
-  assert.match(plain(drawGuide(GUIDE, 'g', view, rows, 90)[0]), /▲ 1 above · ▼ \d+ more$/)
-
-  view = scrollGuide(view, { kind: 'bottom' }, total, rows)
-  assert.equal(view.top, total - (rows - 1))
-  assert.equal(scrollGuide(view, { kind: 'pageDown' }, total, rows).top, view.top)
-  assert.deepEqual(scrollGuide(view, { kind: 'top' }, total, rows), { top: 0 })
-  assert.deepEqual(scrollGuide({ top: 0 }, { kind: 'up' }, total, rows), { top: 0 })
-})
-
-test('without a guide file the guide tab says where to write one', () => {
-  const lines = drawGuide(undefined, '~/.claude/workflow-guide.md', { top: 0 }, 9, 80).map(plain)
-
-  assert.match(lines[1], /^No guide yet: write it to ~\/\.claude\/workflow-guide\.md/)
 })
 
 test('before the feed exists each pane says it is waiting', () => {

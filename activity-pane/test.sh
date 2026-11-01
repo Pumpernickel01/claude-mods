@@ -1,7 +1,7 @@
 #!/bin/bash
 # Offline tests for activity-pane (bash 3.2, exit 1 on any failure):
 #   1. viewer/shell_tabs_test.py   the Shell pane's Agents views, and the wrapper in a real pty
-#   2. viewer/draw.spec.mjs        what the Data flow, Guide and Tools viewers draw (node --test)
+#   2. viewer/draw.spec.mjs        what the Data flow and Tools viewers draw (node --test)
 #   3. tests/*.test.tsx            the hooks module, herdr mocked (claude plugin test)
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
