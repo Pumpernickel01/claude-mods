@@ -133,7 +133,7 @@ const segmentsOf = (command: string): string[][] | undefined => {
     } else if (ch === '\\' && i + 1 < command.length) {
       word += command[(i += 1)]
       inWord = true
-    } else if (/\s/.test(ch)) {
+    } else if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
       endWord()
       if (ch === '\n') segments.push([])
     } else if (ch === ';' || ch === '|' || ch === '&') {
@@ -176,9 +176,11 @@ export const targetsOf = (command: string): Target[] => {
   const segments = segmentsOf(command)
   if (segments === undefined) {
     // unbalanced quotes: nothing is read as a host, but a command that looks like a network call is listed
-    const programs = command.split(/[\n;|&]+/).map(line => line.trim().split(/\s+/)[0]?.split('/').pop() ?? '')
-    const net = programs.find(program => NET.has(program) || program === 'git')
-    if (net !== undefined || /:\/\//.test(command) || SCP_HOST.test(command)) add({ host: UNRESOLVED, what: net ?? 'shell' })
+    const net = command
+      .split(/[\n;|&]+/)
+      .map(line => line.trim().split(/\s+/).filter(word => !PREFIX.has(word) && !/^\w+=/.test(word))[0]?.split('/').pop() ?? '')
+      .find(program => NET.has(program) || program === 'git')
+    if (net !== undefined || /:\/\//.test(command) || command.search(SCP_HOST) !== -1) add({ host: UNRESOLVED, what: net ?? 'shell' })
 
     return [...found.values()]
   }

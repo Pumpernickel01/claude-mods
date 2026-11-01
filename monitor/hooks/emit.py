@@ -118,7 +118,8 @@ def bash_hosts(command):
     if segments is None:
         # unbalanced quotes: nothing is read as a host, but a command that looks like a network call is listed
         lines = re.split(r"[\n;|&]+", command or "")
-        is_net = any((line.split() or [""])[0].split("/")[-1] in NET | {"git"} for line in lines)
+        is_net = any(([w for w in line.split() if w not in PREFIX and not re.match(r"^\w+=", w)] or [""])[0].split("/")[-1]
+                     in NET | {"git"} for line in lines)
         return [UNRESOLVED] if is_net or URL_AUTH.search(command) or SCP_HOST.search(command) else []
     for words in segments:
         tokens = list(words)

@@ -134,6 +134,8 @@ test('a URL with an @ after its authority, an empty port or a variable in the ho
   await $.tool.call(bash('echo a#b; curl https://api.example.com/ # not https://evil.com', 'b14'))
   await $.tool.call(bash('curl http://nas:5000/ && curl http://localhost:8080/', 'b15'))
   await $.tool.call(bash(`ssh box.example.net "echo it's`, 'b16'))
+  await $.tool.call(bash(`FOO=1 sudo scp pi@box.example.net:x "it's`, 'b17'))
+  await $.tool.call(bash(`FOO=1 sudo curl -d "it's`, 'b18'))
   const list = await flows()
 
   // One line per command: b1 and b2 name their host (a query @ does not touch a plain host); b3 (a variable),
@@ -145,7 +147,7 @@ test('a URL with an @ after its authority, an empty port or a variable in the ho
   expect(list.map(flow => flow.to)).toEqual([
     'api.example.com', 'api.example.com', '(unresolved host)', '(unresolved host)', '::1', '(unresolved host)',
     'host.example.com', 'api.example.com', '(unresolved host)', 'api.example.com', '(unresolved host)', 'host', '(unresolved host)',
-    '(unresolved host)', 'api.example.com', '(unresolved host)', 'localhost', '(unresolved host)',
+    '(unresolved host)', 'api.example.com', '(unresolved host)', 'localhost', '(unresolved host)', '(unresolved host)', '(unresolved host)',
   ])
   expect(JSON.stringify(list.map(flow => flow.to))).not.toContain('TOKEN')
   expect(list.map(flow => flow.to).join()).not.toContain('TOKEN')
