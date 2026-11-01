@@ -63,9 +63,9 @@ export const mcpOf = (tool: string) => {
 const URL_AUTH = /\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp):\/\/([^\s/?#'"]+)(['"][^\s/?#]*)?/gi // 2: cut by a quote
 
 // The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
-// template placeholder ($, backtick, braces, backslash) anywhere, when a quote cut it short with more text behind
-// (an unbalanced TOKEN'x@host), or when, with no @, what follows the host is not a port: an authority cut at
-// user:p must not log its username as a host. An empty port (TOKEN:/pw@host) is no port.
+// template placeholder ($, backtick, braces, backslash) anywhere, when it was cut short (`cut`: a quote with text
+// behind it, or an @ later in the same word, as in TOKEN:1234/pw@host), or when, with no @, what follows the host
+// is not a port. An empty port (host:/x) is a port once no @ follows.
 const urlHost = (authority: string, cut: boolean) => {
   if (cut || /[${}`\\]/.test(authority)) return undefined
   const at = authority.lastIndexOf('@')
@@ -73,7 +73,7 @@ const urlHost = (authority: string, cut: boolean) => {
   const bracket = hostport.startsWith('[') ? hostport.indexOf(']') : -1
   const host = bracket > 0 ? hostport.slice(1, bracket) : hostport.split(':')[0] ?? ''
   const rest = bracket > 0 ? hostport.slice(bracket + 1) : hostport.slice(host.length)
-  if (host === '' || (at === -1 && rest !== '' && !/^:\d+$/.test(rest))) return undefined
+  if (host === '' || (at <= 0 && rest !== '' && !/^:\d*$/.test(rest))) return undefined
 
   return host
 }
@@ -122,8 +122,10 @@ export const targetsOf = (command: string): Target[] => {
     const what = program === 'git' ? `git ${sub}` : program
     const before = found.size
 
-    for (const [, authority = '', quoted = ''] of words.matchAll(URL_AUTH)) {
-      const host = urlHost(authority, quoted.length > 1)
+    for (const m of words.matchAll(URL_AUTH)) {
+      const [whole, authority = '', quoted = ''] = m
+      const tail = /^\S*/.exec(words.slice((m.index ?? 0) + whole.length))?.[0] ?? '' // the rest of the word
+      const host = urlHost(authority, quoted.length > 1 || tail.includes('@'))
       if (host !== undefined) add({ host, what })
     }
     if (NET.has(program) || program === 'git') {

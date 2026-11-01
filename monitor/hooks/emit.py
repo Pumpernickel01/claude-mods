@@ -39,9 +39,9 @@ URL_AUTH = re.compile(r"\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp)://([^\s/?
 
 def url_host(authority, cut=False):
     """The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
-    template placeholder ($, backtick, braces, backslash) anywhere, when a quote cut it short with more text behind
-    (an unbalanced TOKEN'x@host), or when, with no @, what follows the host is not a port: an authority
-    cut at user:p must not log its username as a host. An empty port (TOKEN:/pw@host) is no port."""
+    template placeholder ($, backtick, braces, backslash) anywhere, when it was cut short (`cut`: a quote with text
+    behind it, or an @ later in the same word, as in TOKEN:1234/pw@host), or when, with no @, what follows the host
+    is not a port. An empty port (host:/x) is a port once no @ follows."""
     if cut or re.search(r"[${}`\\]", authority):
         return None
     user, _, hostport = authority.rpartition("@")
@@ -49,8 +49,8 @@ def url_host(authority, cut=False):
         host, rest = hostport[1:hostport.index("]")], hostport[hostport.index("]") + 1:]
     else:
         host, sep, port = hostport.partition(":")
-        rest = sep + port  # a bare trailing colon (TOKEN:/pw@host, cut at the slash) is not a port
-    if not host or (not user and rest and not re.fullmatch(r":\d+", rest)):
+        rest = sep + port
+    if not host or (not user and rest and not re.fullmatch(r":\d*", rest)):
         return None
     return host
 SCP_HOST = re.compile(r"\b[\w.-]+@([\w.-]+):")
@@ -85,8 +85,10 @@ def bash_hosts(command):
             tokens.pop(0)
         program = (tokens[0] if tokens else "").split("/")[-1]
         before = len(found)
-        for m in URL_AUTH.finditer(" ".join(words)):
-            add(url_host(m.group(1), cut=len(m.group(2) or "") > 1))
+        joined = " ".join(words)
+        for m in URL_AUTH.finditer(joined):
+            tail = re.match(r"\S*", joined[m.end():]).group(0)  # the rest of the word: a later @ means the authority was cut
+            add(url_host(m.group(1), cut=len(m.group(2) or "") > 1 or "@" in tail))
         if program in NET or program == "git":
             for m in SCP_HOST.finditer(segment):
                 add(m.group(1))
