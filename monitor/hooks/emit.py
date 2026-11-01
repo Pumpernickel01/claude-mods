@@ -89,10 +89,11 @@ def bash_hosts(command):
         joined = " ".join(words)
         for m in URL_AUTH.finditer(joined):
             auth, tail = m.group(1), re.match(r"\S*", joined[m.end():]).group(0)
-            # a later @ in the word cuts only an authority shaped user: or user:1234 (a password with a / in it);
-            # a plain host before a query holding an @ is a host, so such a command is never left unlisted
-            ambiguous = "@" in tail and "@" not in auth and ":" in auth
-            add(url_host(auth, cut=len(m.group(2) or "") > 1 or ambiguous))
+            # a later @ in the word fails closed (no host) unless the authority is plainly a host, with no
+            # userinfo, and the @ sits in the query or fragment: api.example.com?to=a@b is listed, while
+            # user:p@ss/w@host, AbC/xyz@host and TOKEN:1234/pw@host, a password with a / in it, are not
+            plain = "@" not in auth and hostlike(url_host(auth) or "") and tail[:1] in ("?", "#")
+            add(url_host(auth, cut=len(m.group(2) or "") > 1 or ("@" in tail and not plain)))
         if program in NET or program == "git":
             for m in SCP_HOST.finditer(segment):
                 add(m.group(1))

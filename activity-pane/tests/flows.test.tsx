@@ -127,6 +127,7 @@ test('a URL with an @ after its authority, an empty port or a variable in the ho
   await $.tool.call(bash("curl https://TOKEN:'pw'@host.example.com/ \"https://api.example.com\"", 'b7'))
   await $.tool.call(bash("curl https://TOKEN:123'x'@host.example.com/ https://TOKEN'x@host.example.com/ https://TOKEN:/pw@host/ https://TOKEN:1234/pw@host/", 'b8'))
   await $.tool.call(bash('curl https://api.example.com:/x', 'b9'))
+  await $.tool.call(bash('curl https://u:p@ss/w@host/ https://AbC/xyz@host/ https://user:p@ss/word@host/', 'b10'))
   const list = await flows()
 
   // b9 (an empty port) is ambiguous: no line, rather than a guess; b2's query @ does not touch its plain host

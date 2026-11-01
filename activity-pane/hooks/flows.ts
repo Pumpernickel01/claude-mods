@@ -60,6 +60,8 @@ export const mcpOf = (tool: string) => {
 
 // The whole authority (up to / ? # or a quote), one unit: urlHost takes the host out of it, so a regex can
 // never backtrack into a password and call it the host.
+// a name with labels and an alphabetic last one, or an IPv4: what a host plainly looks like
+const HOSTLIKE = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[\w-]+(?:\.[\w-]+)*\.[a-z]+)$/i
 const URL_AUTH = /\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp):\/\/([^\s/?#'"]+)(['"][^\s/?#]*)?/gi // 2: cut by a quote
 
 // The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
@@ -126,10 +128,11 @@ export const targetsOf = (command: string): Target[] => {
     for (const m of words.matchAll(URL_AUTH)) {
       const [whole, authority = '', quoted = ''] = m
       const tail = /^\S*/.exec(words.slice((m.index ?? 0) + whole.length))?.[0] ?? '' // the rest of the word
-      // a later @ in the word cuts only an authority shaped user: or user:1234 (a password with a / in it);
-      // a plain host before a query holding an @ is a host, so such a command is never left unlisted
-      const ambiguous = tail.includes('@') && !authority.includes('@') && authority.includes(':')
-      const host = urlHost(authority, quoted.length > 1 || ambiguous)
+      // a later @ in the word fails closed (no host) unless the authority is plainly a host, with no
+      // userinfo, and the @ sits in the query or fragment: api.example.com?to=a@b is listed, while
+      // user:p@ss/w@host, AbC/xyz@host and TOKEN:1234/pw@host, a password with a / in it, are not
+      const plain = !authority.includes('@') && HOSTLIKE.test(urlHost(authority, false) ?? '') && /^[?#]/.test(tail)
+      const host = urlHost(authority, quoted.length > 1 || (tail.includes('@') && !plain))
       if (host !== undefined) add({ host, what })
     }
     if (NET.has(program) || program === 'git') {
