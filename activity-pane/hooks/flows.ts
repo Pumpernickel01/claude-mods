@@ -65,7 +65,8 @@ const URL_AUTH = /\b(?:https?|wss?|ftp|mqtts?|coap|rtsp|tcp|udp):\/\/([^\s/?#'"]
 // The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
 // template placeholder ($, backtick, braces, backslash) anywhere, when it was cut short (`cut`: a quote with text
 // behind it, or an @ later in the same word, as in TOKEN:1234/pw@host), or when, with no @, what follows the host
-// is not a port. An empty port (host:/x) is a port once no @ follows.
+// is not a numeric port: a quoted ; splits the raw command before the words are read, which can leave TOKEN:
+// at a word's end, so an empty port is never trusted.
 const urlHost = (authority: string, cut: boolean) => {
   if (cut || /[${}`\\]/.test(authority)) return undefined
   const at = authority.lastIndexOf('@')
@@ -73,7 +74,7 @@ const urlHost = (authority: string, cut: boolean) => {
   const bracket = hostport.startsWith('[') ? hostport.indexOf(']') : -1
   const host = bracket > 0 ? hostport.slice(1, bracket) : hostport.split(':')[0] ?? ''
   const rest = bracket > 0 ? hostport.slice(bracket + 1) : hostport.slice(host.length)
-  if (host === '' || (at <= 0 && rest !== '' && !/^:\d*$/.test(rest))) return undefined
+  if (host === '' || (at <= 0 && rest !== '' && !/^:\d+$/.test(rest))) return undefined
 
   return host
 }
@@ -139,6 +140,7 @@ export const targetsOf = (command: string): Target[] => {
     } else if (NET.has(program) && found.size === before) {
       const host = tokens
         .slice(1)
+        .filter(token => !token.includes('://')) // a URL the rule above found no host in: never read as a bare host either
         .map(token => token.replace(/^[^@\s]+@/, ''))
         .find(token => !token.startsWith('-') && /^[\w.-]+$/.test(token) && !/^\d+$/.test(token))
       if (host !== undefined) add({ host, what })

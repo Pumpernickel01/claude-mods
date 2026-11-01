@@ -114,7 +114,7 @@ test('a shell command gets a line for each place it reaches, the local network m
   expect(list[0]?.detail).toBe('curl -X POST http://192.168.4.1/led && ssh pi@raspberrypi.local uptime')
 })
 
-test('an @ in a URL password or query never names the host, and a host cut by a variable is none', async ($, on) => {
+test('a URL with an @ after its authority, an empty port or a variable in the host names no host at all', async ($, on) => {
   const { flows } = setUp(on)
   await $.session.start(START)
 
@@ -129,9 +129,8 @@ test('an @ in a URL password or query never names the host, and a host cut by a 
   await $.tool.call(bash('curl https://api.example.com:/x', 'b9'))
   const list = await flows()
 
-  expect(list.map(flow => flow.to)).toEqual([
-    'api.example.com', 'api.example.com', '::1', 'api.example.com', 'host.example.com', 'api.example.com', 'host.example.com', 'api.example.com',
-  ])
+  // b2 (an @ in the query) and b9 (an empty port) are ambiguous: no line, rather than a guess
+  expect(list.map(flow => flow.to)).toEqual(['api.example.com', '::1', 'api.example.com', 'host.example.com', 'api.example.com', 'host.example.com'])
   expect(list.map(flow => flow.to).join()).not.toContain('TOKEN')
   expect(list.map(flow => flow.to).join()).not.toContain('@')
 })

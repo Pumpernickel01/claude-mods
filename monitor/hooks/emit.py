@@ -41,7 +41,8 @@ def url_host(authority, cut=False):
     """The host of a URL authority: after the last @, before the port. None when the authority holds a shell or
     template placeholder ($, backtick, braces, backslash) anywhere, when it was cut short (`cut`: a quote with text
     behind it, or an @ later in the same word, as in TOKEN:1234/pw@host), or when, with no @, what follows the host
-    is not a port. An empty port (host:/x) is a port once no @ follows."""
+    is not a numeric port: a quoted ; splits the raw command before shlex sees it, which can leave TOKEN: at a
+    word's end, so an empty port is never trusted."""
     if cut or re.search(r"[${}`\\]", authority):
         return None
     user, _, hostport = authority.rpartition("@")
@@ -50,7 +51,7 @@ def url_host(authority, cut=False):
     else:
         host, sep, port = hostport.partition(":")
         rest = sep + port
-    if not host or (not user and rest and not re.fullmatch(r":\d*", rest)):
+    if not host or (not user and rest and not re.fullmatch(r":\d+", rest)):
         return None
     return host
 SCP_HOST = re.compile(r"\b[\w.-]+@([\w.-]+):")
@@ -95,6 +96,8 @@ def bash_hosts(command):
         if program in NET and len(found) == before:
             prev = ""
             for t in tokens[1:]:
+                if "://" in t:
+                    continue  # a URL the rule above found no host in: never read as a bare host either
                 t, flag = re.sub(r"^[^@\s]+@", "", t), prev.startswith("-")
                 prev = t
                 # shortcut: a bare argument counts only when shaped like a host (labels of up to 63 chars, an
