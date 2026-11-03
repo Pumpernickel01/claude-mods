@@ -32,6 +32,28 @@ test('spawn → start → tool → stop', () => {
   assert.equal(S.nodes.get(MAIN).status, 'idle')
 })
 
+test('a foreground agent ends when its call returns; a spawn that never ran is gone at the end of the turn', () => {
+  const m = new Model()
+  m.ingest(rec('session_start', { status: 'running' }))
+  m.ingest(rec('agent_start', { status: 'running', agent_type: 'web-fetch', description: 'Read a page', tool_use_id: 'toolu_fg' }))
+  m.ingest(rec('agent_start', { status: 'running', agent_type: 'Explore', tool_use_id: 'toolu_bg' }))
+  m.ingest(rec('tool_end', { tool: 'Agent', tool_use_id: 'toolu_bg', result: 'async_launched', result_agent_id: 'b0b0b0b0b0b0' }))
+  const S = m.latest()
+  assert.equal(S.nodes.get('toolu_bg').status, 'starting', 'a background launch is no end')
+  m.ingest(rec('agent_start', { status: 'running', agent_id: 'b0b0b0b0b0b0', agent_type: 'Explore' }))
+  m.ingest(rec('tool_end', { tool: 'Agent', tool_use_id: 'toolu_fg', result: 'completed', result_agent_id: 'f0f0f0f0f0f0' }))
+  const fg = S.nodes.get('f0f0f0f0f0f0')
+  assert.deepEqual([fg.status, fg.task, S.pending], ['done', 'Read a page', []])
+  assert.equal(links(S, 1e12).find(l => l.to === 'f0f0f0f0f0f0').flowing, false)
+  assert.equal(links(S, 1e12).find(l => l.to === 'b0b0b0b0b0b0').flowing, true)
+  m.ingest(rec('agent_start', { status: 'running', agent_type: 'Plan', tool_use_id: 'toolu_denied' }))
+  m.ingest(rec('agent_start', { status: 'running', agent_type: 'Plan', tool_use_id: 'toolu_sub', parent_agent_id: 'b0b0b0b0b0b0' }))
+  m.ingest(rec('session_stop'))
+  assert.equal(S.nodes.get('toolu_denied').status, 'gone')
+  assert.equal(S.nodes.get('toolu_sub').status, 'starting', "an agent's spawn may still be on its way")
+  assert.deepEqual(S.pending, ['toolu_sub'])
+})
+
 test('failed spawn, message resolve, clear', () => {
   const m = new Model()
   m.ingest(rec('session_start', { status: 'running' }))

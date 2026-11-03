@@ -69,6 +69,11 @@ class Session {
     for (const [nid, n] of this.nodes) if (nid !== MAIN && n.isLive) (n.status = 'gone'), (n.end = ts)
     this.pending = []
   }
+  finish(n, status, ts) {
+    n.status = status
+    n.end = ts
+    this.comms.push({ ts, kind: 'return', from: n, to: this.node(n.parent || MAIN, ts) })
+  }
   clear() {
     const gone = new Set([...this.nodes].filter(([nid, n]) => nid !== MAIN && !n.isLive).map(([nid]) => nid))
     for (const nid of gone) this.nodes.delete(nid)
@@ -150,11 +155,20 @@ export class Model {
       n.tools += 1
       n.lastTool = rec.tool || ''
       if (aid == null && !S.ended) main.status = 'running'
-      if (n.lastTool === 'Agent' && rec.status === 'failed' && S.pending.includes(rec.tool_use_id)) {
-        const failed = S.nodes.get(rec.tool_use_id)
-        S.pending.splice(S.pending.indexOf(rec.tool_use_id), 1)
-        failed.status = 'failed'
-        failed.end = ts
+      let tid = rec.tool_use_id
+      if (n.lastTool === 'Agent' && S.pending.includes(tid) && rec.status === 'failed') {
+        S.pending.splice(S.pending.indexOf(tid), 1) // the spawn itself failed
+        S.nodes.get(tid).status = 'failed'
+        S.nodes.get(tid).end = ts
+      } else if (n.lastTool === 'Agent' && S.pending.includes(tid) && rec.result === 'completed') {
+        // a foreground agent: no SubagentStart or SubagentStop, only its call returning when it is done
+        S.pending.splice(S.pending.indexOf(tid), 1)
+        const aidDone = rec.result_agent_id
+        if (aidDone && !S.nodes.has(aidDone)) {
+          S.rekey(tid, aidDone)
+          tid = aidDone
+        }
+        S.finish(S.nodes.get(tid), 'done', ts)
       }
       if (n.lastTool === 'SendMessage' && rec.to) S.comms.push({ ts, kind: 'message', from: n, to: S.resolve(rec.to) || String(rec.to) })
       S.counts.calls++
@@ -168,10 +182,8 @@ export class Model {
       }
     } else if (ev === 'agent_stop' && S.nodes.has(aid)) {
       const n = S.nodes.get(aid)
-      n.status = rec.status === 'failed' ? 'failed' : 'done'
-      n.end = ts
       n.tokens = rec.tokens || n.tokens
-      S.comms.push({ ts, kind: 'return', from: n, to: S.node(n.parent || MAIN, ts) })
+      S.finish(n, rec.status === 'failed' ? 'failed' : 'done', ts)
     } else if (ev === 'prompt') {
       S.counts.prompts++
       push(S.prompts, { ts, text: rec.text || '' }, 50)
@@ -181,6 +193,13 @@ export class Model {
       push(S.notes, { ts, kind: rec.kind || 'notification' }, 50)
     } else if (ev === 'session_stop') {
       main.status = 'idle' // between turns: waiting for you, not gone
+      // main's spawns that never reported in by the end of its turn were denied or cut off: they never
+      // ran. An agent's spawn may still be on its way, so only main's.
+      for (const tid of S.pending.filter(t => S.nodes.get(t).parent === MAIN)) {
+        S.pending.splice(S.pending.indexOf(tid), 1)
+        S.nodes.get(tid).status = 'gone'
+        S.nodes.get(tid).end = ts
+      }
     } else if (ev === 'session_end') {
       S.retire(ts)
       main.status = 'done'

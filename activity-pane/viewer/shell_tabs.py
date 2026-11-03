@@ -187,6 +187,11 @@ class Session:
                 n.status, n.end = "gone", ts
         self.pending.clear()
 
+    def finish(self, n, status, ts):
+        """The agent ended: greyed out, and its edge flows back to its parent for a moment."""
+        n.status, n.end = status, ts
+        self.comms.append((ts, "return", n, self.node(n.parent or MAIN, ts)))
+
     def clear(self):
         """Drops finished agents and the exchanges they were in; a live agent they spawned moves under main."""
         gone = {nid for nid, n in self.nodes.items() if nid != MAIN and not n.is_live}
@@ -248,19 +253,31 @@ class Model:
             n.last_tool = rec.get("tool") or ""
             if aid is None and not S.ended:
                 main.status = "running"
-            if n.last_tool == "Agent" and rec.get("status") == "failed" and rec.get("tool_use_id") in S.pending:
-                failed = S.nodes[rec["tool_use_id"]]  # the spawn itself failed
-                S.pending.remove(rec["tool_use_id"])
-                failed.status, failed.end = "failed", ts
+            tid = rec.get("tool_use_id")
+            if n.last_tool == "Agent" and tid in S.pending and rec.get("status") == "failed":
+                S.pending.remove(tid)  # the spawn itself failed
+                S.nodes[tid].status, S.nodes[tid].end = "failed", ts
+            elif n.last_tool == "Agent" and tid in S.pending and rec.get("result") == "completed":
+                # a foreground agent: no SubagentStart or SubagentStop, only its call returning when it is done
+                S.pending.remove(tid)
+                aid_done = rec.get("result_agent_id")
+                if aid_done and aid_done not in S.nodes:
+                    S.rekey(tid, aid_done)
+                    tid = aid_done
+                S.finish(S.nodes[tid], "done", ts)
             if n.last_tool == "SendMessage" and rec.get("to"):
                 S.comms.append((ts, "message", n, S.resolve(rec["to"]) or str(rec["to"])))
         elif ev == "agent_stop" and aid in S.nodes:
             n = S.nodes[aid]
-            n.status = "failed" if rec.get("status") == "failed" else "done"
-            n.end, n.tokens = ts, rec.get("tokens") or n.tokens
-            S.comms.append((ts, "return", n, S.node(n.parent or MAIN, ts)))
+            n.tokens = rec.get("tokens") or n.tokens
+            S.finish(n, "failed" if rec.get("status") == "failed" else "done", ts)
         elif ev == "session_stop":
             main.status = "idle"  # between turns: waiting for you, not gone
+            # main's spawns that never reported in by the end of its turn were denied or cut off: they never
+            # ran. An agent's spawn may still be on its way, so only main's.
+            for tid in [t for t in S.pending if S.nodes[t].parent == MAIN]:
+                S.pending.remove(tid)
+                S.nodes[tid].status, S.nodes[tid].end = "gone", ts
         elif ev == "session_end":
             S.retire(ts)
             main.status, main.end, S.ended = "done", ts, True

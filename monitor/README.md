@@ -39,7 +39,10 @@ paths, tool names, durations, the agent's
 call reached (`target`, with `target_kind` file | host | mcp): the file path of a
 Read/Edit/Write/Glob/Grep, the host of a WebFetch or of a shell command that
 names one (URL, `user@host`, or the argument of ssh/curl/scp and the like), or
-an MCP server's name. A `prompt` record keeps the first 120 characters of what
+an MCP server's name. An `Agent` call's `tool_end` keeps its response's status
+(`result`: `completed` once a foreground agent, which gets no SubagentStart or
+SubagentStop, has finished; `async_launched` for a background one) and agent id
+(`result_agent_id`), never its report. A `prompt` record keeps the first 120 characters of what
 you typed; a `notification` record keeps only its type. Tool inputs (the full
 command, file contents, search text), outputs, error texts and message bodies
 are never logged. A `state` record from the HUD's Jarvis (listening, thinking,

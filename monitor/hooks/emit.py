@@ -11,6 +11,9 @@ kinds (see REPORT.md for the hooks.json wiring):
   notification   Notification (its notification_type, no message text)
 tool_end carries `target` (a file path, host or MCP server name) and `target_kind`
 (file | host | mcp) derived from the tool input; the input itself is never logged.
+An Agent call's tool_end also carries `result` (the response's status: completed for a
+foreground agent that has finished, async_launched for a background one) and
+`result_agent_id`; nothing else of the response.
 Never blocks, never prints: any failure exits 0 quietly.
 """
 import json
@@ -235,13 +238,17 @@ def main():
     elif kind in ("tool_end", "tool_fail"):
         tool = data.get("tool_name")
         to = (data.get("tool_input") or {}).get("to") if tool == "SendMessage" else None
+        # an Agent call's status and agent id only: "completed" ends a foreground agent, which gets no
+        # SubagentStart or SubagentStop; the response's report and prompt are never logged
+        resp = data.get("tool_response") if tool == "Agent" else None
+        resp = resp if isinstance(resp, dict) else {}
         try:
             target, target_kind = target_of(tool, data.get("tool_input"))
         except Exception:
             target = target_kind = None  # the record is worth more than its target
         emit("tool_end", "failed" if kind == "tool_fail" else "done", data, tool=tool,
              duration_ms=data.get("duration_ms"), tool_use_id=data.get("tool_use_id"), to=to,
-             target=target, target_kind=target_kind)
+             target=target, target_kind=target_kind, result=resp.get("status"), result_agent_id=resp.get("agentId"))
     elif kind == "agent_stop":
         path = data.get("agent_transcript_path")
         emit("agent_stop", "done", data, agent_transcript_path=path, tokens=transcript_tokens(path))

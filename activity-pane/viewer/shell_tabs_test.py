@@ -253,6 +253,29 @@ class Live(Files):
                               rec(3, "agent_stop", agent_id="fin_2222", status="done"))
         self.assertNotIn("•", edges_at(done, T0 + 20))
 
+    def test_a_foreground_agent_stops_flowing_once_its_call_returns(self):
+        # a foreground agent gets no SubagentStart or SubagentStop: only its Agent call's return says it ended
+        a = self.agents_of(rec(0, "session_start"), spawn(1, "t1", "web-fetch", "Read a page"),
+                           spawn(2, "t2", "Explore"),
+                           rec(2, "tool_end", tool="Agent", status="done", tool_use_id="t2", result="async_launched"),
+                           rec(5, "tool_end", tool="Agent", status="done", tool_use_id="t1", result="completed",
+                               result_agent_id="f00a1b2c3d4e5f60"))
+        S = a.session()
+        fg = S.nodes["f00a1b2c3d4e5f60"]
+        self.assertEqual((fg.status, fg.task, S.pending), ("done", "Read a page", ["t2"]))
+        self.assertEqual(S.nodes["t2"].status, "starting")  # a background launch is no end
+        later = T0 + 5 + shell_tabs.FLOW_AFTER_RETURN + 1
+        flowing = {dst: on for _, dst, _, on, _ in shell_tabs.links(S, later)}
+        self.assertEqual(flowing, {"f00a1b2c3d4e5f60": False, "t2": True})
+
+    def test_main_spawns_that_never_ran_are_gone_at_the_end_of_the_turn(self):
+        a = self.agents_of(rec(0, "session_start"), spawn(1, "t1", "Explore"), start(2, "par_6666", "Explore"),
+                           spawn(3, "t2", "Plan", "Denied"), spawn(4, "t3", "Plan", parent="par_6666"),
+                           rec(5, "session_stop"))
+        S = a.session()
+        self.assertEqual([S.nodes[n].status for n in ("par_6666", "t2", "t3")], ["running", "gone", "starting"])
+        self.assertEqual(S.pending, ["t3"])  # an agent's spawn may still be on its way
+
     def test_a_message_to_a_name_finds_its_agent_and_is_listed(self):
         a = self.agents_of(rec(0, "session_start"), spawn(1, "t1", "general-purpose", name="researcher"),
                            start(2, "res_5555", "general-purpose"), spawn(3, "t2", "Explore"), start(4, "exp_4444", "Explore"),
