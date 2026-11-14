@@ -1,0 +1,5 @@
+{
+  "name": "gesture-vscode",
+  "version": "0.1.0",
+  "description": "Point one finger up at the camera to open the session's folder in VS Code, or switch to its window"
+}

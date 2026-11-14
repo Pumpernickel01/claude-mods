@@ -1,0 +1,6 @@
+{
+  "name": "read-aloud",
+  "version": "0.1.0",
+  "description": "A play button above the prompt that reads Claude's last answer out loud",
+  "types": "./types/index.d.ts"
+}

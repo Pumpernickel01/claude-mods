@@ -1,0 +1,6 @@
+{
+  "name": "session-band",
+  "version": "0.1.0",
+  "description": "A band above the prompt with the Spotify song playing and its controls",
+  "types": "./types/index.d.ts"
+}

@@ -1,0 +1,5 @@
+{
+  "name": "activity-status",
+  "version": "0.1.0",
+  "description": "A status line saying what Claude is doing right now"
+}

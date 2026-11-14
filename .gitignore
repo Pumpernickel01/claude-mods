@@ -6,3 +6,5 @@ node_modules/
 *.log
 *.local.json
 .pytest_cache/
+.claude-plugin/types/
+gesture-vscode/bin/
