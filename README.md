@@ -1,5 +1,7 @@
 # claude-mods
 
+[![test](https://github.com/Pumpernickel01/claude-mods/actions/workflows/test.yml/badge.svg)](https://github.com/Pumpernickel01/claude-mods/actions/workflows/test.yml)
+
 A Claude Code plugin marketplace with one plugin, `mods` (hooks, two
 subagents, a status line and a live agent monitor), plus six interface mods
 that change Claude Code's own screen. Built for
@@ -93,11 +95,13 @@ transport: GitHub supports ML-KEM-768 hybrid key exchange, Apple's default
 Every mod lives in its own folder with a `README.md`, `test.sh` and
 `REPORT.md`. `CONVENTIONS.md` is the contract (bash 3.2, stdlib Python,
 shared `lib/termcap` and `lib/events`), `FORMATS.md` is the verbatim format
-reference from the Claude Code docs. Run all tests:
+reference from the Claude Code docs. The tests run on GitHub on every push and
+pull request. Run all tests locally:
 
 ```
 for t in hooks/*/test.sh lib/test_termcap.sh bin/test_*.sh monitor/test.sh statusline/test.sh activity-pane/test.sh; do bash "$t" >/dev/null && echo "ok $t" || echo "FAIL $t"; done
-for m in activity-status session-band gesture-vscode model-guide read-aloud; do claude plugin test "$m"; done
+for m in activity-status session-band gesture-vscode model-guide read-aloud activity-pane; do claude plugin test "$m"; done
+claude plugin validate .
 ```
 
 MIT licensed.

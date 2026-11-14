@@ -91,7 +91,7 @@ OUT="$(printf '{bad json' | apple)"; RC=$?
 ok "disable prints nothing; empty stdin silent; bad input prints model name, exit 0"
 
 # wrapper
-[[ "$(json 30 "$TMP/dirty" | env -u COLORTERM HOME="$TMP/home" TERM_PROGRAM=Apple_Terminal bash "$HERE/statusline.sh")" == *"git:main●"* ]] || fail "statusline.sh wrapper"
+[[ "$(json 30 "$TMP/dirty" | env -u COLORTERM HOME="$TMP/home" LANG=en_US.UTF-8 TERM_PROGRAM=Apple_Terminal bash "$HERE/statusline.sh")" == *"git:main●"* ]] || fail "statusline.sh wrapper"
 ok "statusline.sh wrapper execs the python with stdin"
 
 # cache file exists and is reused (3 s)
