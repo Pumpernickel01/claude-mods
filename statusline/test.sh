@@ -32,9 +32,10 @@ OUT="$(json 30 "$TMP/dirty" | apple)"
 [[ $OUT == *"git:main●"* ]] || fail "(a) dirty branch mark missing: $OUT"
 [[ $OUT == *"wt:feature-xyz"* ]] || fail "(a) worktree missing: $OUT"
 [[ $OUT == *"ctx 30% [███░░░░░░░]"* ]] || fail "(a) bar wrong: $OUT"
-[[ $OUT == *'$0.01'* ]] || fail "(a) cost missing: $OUT"
+[[ $OUT == "dirty  Opus  "* ]] || fail "(a) folder not first: $OUT"
+[[ $OUT != *'$'* ]] || fail "(a) cost shown, the band above the prompt has it: $OUT"
 [[ $OUT == *"effort:high"* ]] || fail "(a) effort missing: $OUT"
-ok "(a) Apple_Terminal 30%: 256-colour only, green, git:main● wt, bar, cost, effort"
+ok "(a) Apple_Terminal 30%: 256-colour only, green, git:main● wt, bar, effort, no cost"
 [[ "$(json 60 "$TMP/dirty" | apple)" == *"${S5}114m"* ]] || fail "(a) 60% not green"
 [[ "$(json 65 "$TMP/dirty" | apple)" == *"${S5}178m"* ]] || fail "(a) 65% not yellow"
 [[ "$(json 80 "$TMP/dirty" | apple)" == *"${S5}178m"* ]] || fail "(a) 80% not yellow"
@@ -70,17 +71,15 @@ OUT="$(json 30 "$TMP/dirty" | run TERM_PROGRAM=Apple_Terminal TERM=xterm-256colo
 LC_ALL=C python3 -c 'import sys; sys.exit(0 if all(ord(c) < 128 for c in sys.argv[1]) else 1)' "$OUT" || fail "(c) non-ASCII byte in: $OUT"
 ok "(c) LANG=C falls back to * - # . and 'ctx -'"
 
-# width: COLUMNS drops bar, then cost, then effort
+# width: COLUMNS drops bar, then effort
 FULL="$(json 30 "$TMP/dirty" | apple COLUMNS=200)"
 [[ $FULL == *" ["* ]] || fail "COLUMNS=200 dropped the bar: $FULL"
-# visible widths of this fixture: full 72, no bar 59, no bar+cost 52, no bar+cost+effort 39
+# visible widths of this fixture: full 72, no bar 59, no bar+effort 46
 OUT="$(json 30 "$TMP/dirty" | apple COLUMNS=60)"
-[[ $OUT != *" ["* && $OUT == *'$0.01'* ]] || fail "COLUMNS=60 should drop only the bar: $OUT"
-OUT="$(json 30 "$TMP/dirty" | apple COLUMNS=55)"
-[[ $OUT != *'$'* && $OUT == *"effort"* ]] || fail "COLUMNS=55 should drop bar+cost: $OUT"
-OUT="$(json 30 "$TMP/dirty" | apple COLUMNS=40)"
-[[ $OUT != *" ["* && $OUT != *"effort"* && $OUT == *"ctx 30%"* ]] || fail "COLUMNS=40 should drop bar, cost, effort: $OUT"
-ok "COLUMNS=60 drops the bar, 55 drops cost too, 40 drops effort too"
+[[ $OUT != *" ["* && $OUT == *"effort"* ]] || fail "COLUMNS=60 should drop only the bar: $OUT"
+OUT="$(json 30 "$TMP/dirty" | apple COLUMNS=50)"
+[[ $OUT != *" ["* && $OUT != *"effort"* && $OUT == *"ctx 30%"* ]] || fail "COLUMNS=50 should drop bar and effort: $OUT"
+ok "COLUMNS=60 drops the bar, 50 drops effort too"
 
 # disable, empty stdin, bad input
 [ -z "$(json 30 "$TMP/dirty" | apple CLAUDE_MODS_DISABLE=other,statusline)" ] || fail "disabled but printed"

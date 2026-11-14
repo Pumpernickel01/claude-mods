@@ -49,7 +49,6 @@ Replaced 2026-10-24: the Textual window (`monitor.py`, `monitor.sh`, AppleScript
 }
 ```
 
-The `hud` folder adds one more SessionStart entry (`hud/launch.py`, matcher `startup|resume`) that starts the HUD server.
 
 Stop / SubagentStop handlers never block (exit 0, no stdout) regardless of `stop_hook_active`.
 

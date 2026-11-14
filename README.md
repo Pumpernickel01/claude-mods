@@ -1,7 +1,8 @@
 # claude-mods
 
-A Claude Code plugin marketplace with one plugin, `mods`: hooks, skills,
-subagents, MCP servers, a status line and a live agent monitor, built for
+A Claude Code plugin marketplace with one plugin, `mods` (hooks, two
+subagents, a status line and a live agent monitor), plus six interface mods
+that change Claude Code's own screen. Built for
 macOS with Terminal.app and Ghostty as first-class terminals. Linux works
 where it was cheap. Built and tested on Claude Code 2.1.310, macOS 26.6.
 
@@ -21,14 +22,17 @@ Then add the status line to `~/.claude/settings.json` (plugins cannot set it):
 
 On the development machine the marketplace is the local checkout, so the path
 is `~/claude-mods/statusline/statusline.sh`. Restart Claude Code once.
-First use of the MCP servers downloads `mcp`, `psycopg` and `pyserial` into
-uv's cache (network, once). Nothing is installed
-system-wide; `uv` must be on PATH.
+
+The interface mods are separate folders. Clone the repo and list the ones you
+want in `CLAUDE_CODE_PLUGIN_DIRS` (settings.json, under `"env"`, joined by `:`):
+
+```
+~/claude-mods/activity-pane:~/claude-mods/activity-status:~/claude-mods/session-band:~/claude-mods/gesture-vscode:~/claude-mods/model-guide:~/claude-mods/read-aloud
+```
 
 ## What you get
 
-Skills are namespaced by the plugin: type `/mods:commit`, not `/commit`.
-Subagents are `mods:<name>`. MCP tools are `mcp__plugin_mods_<server>__<tool>`.
+Subagents are `mods:<name>`.
 
 | Mod | What it does | Use | Disable |
 | :-- | :-- | :-- | :-- |
@@ -40,21 +44,16 @@ Subagents are `mods:<name>`. MCP tools are `mcp__plugin_mods_<server>__<tool>`.
 | prompt-journal | Appends every prompt to `~/claude-journal/YYYY-MM-DD.md` (0600) | automatic | `CLAUDE_MODS_DISABLE=prompt-journal` |
 | precompact-snapshot | Copies the transcript to `~/.claude/snapshots/` before compaction, prunes after 30 days | automatic | `CLAUDE_MODS_DISABLE=precompact-snapshot` |
 | test-writer-guard | Enforces that the test-writer agent only writes test files and only runs test / read-only commands | automatic | `CLAUDE_MODS_DISABLE=test-writer-guard` |
-| /mods:commit | Conventional Commit message from the staged diff, shown for approval before committing | type it | delete `skills/commit` |
-| /mods:review | Read-only review of uncommitted changes: bugs, error handling, security, debug leftovers | type it | delete `skills/review` |
-| /mods:explain-error | Paste an error; finds the cause, explains, proposes a fix, applies only on your OK | type it | delete `skills/explain-error` |
-| /mods:changelog | Release notes since the last tag grouped by commit type | type it | delete `skills/changelog` |
 | mods:test-writer | Writes and runs tests only (enforced by test-writer-guard) | `@agent-mods:test-writer` | delete `agents/test-writer.md` |
-| mods:security-auditor | Read-only audit (Read/Glob/Grep only): injection, secrets, deserialization, path traversal, shell calls | `@agent-mods:security-auditor` | delete the file |
-| mods:docs-updater | Syncs README, docstrings and comments with code changes | `@agent-mods:docs-updater` | delete the file |
 | mods:hardware-debugger | Serial/USB/device-log debugging on macOS (`/dev/cu.*`, `ioreg`, `system_profiler`, unified log) | `@agent-mods:hardware-debugger` | delete the file |
-| statusline | Model, git branch with dirty mark, context % (yellow > 60, red > 80), cost; < 50 ms | settings.json | remove `statusLine` or `CLAUDE_MODS_DISABLE=statusline` |
-| scanner (MCP) | `get_status`, `read_config`, `scan`; mock by default, real serial transport is a documented stub | `/mcp` | remove from `.mcp.json` |
-| local-docs (MCP) | `list_docs`, `search`, `read_doc` over PDFs/markdown/text in `DOCS_DIR` (default `~/Documents/datasheets`, created if missing) | `/mcp` | remove from `.mcp.json` |
-| db-inspector (MCP) | Read-only SQLite (auto-detected) and PostgreSQL (`DB_INSPECTOR_URL`), enforced at the connection and by a statement filter | `/mcp` | remove from `.mcp.json` |
-| monitor | Records every agent start, tool call (with the file, host or MCP server it reached) and stop, each prompt's first 120 characters and each notification's type to `~/.claude/agent-monitor/events.jsonl`; the herdr column's Shell pane (`activity-pane`) shows them as **Agents** (status, progress bar, elapsed, tool calls, tokens per agent) and **Agent graph** (animated spawn / message graph) | Shift+Tab in the Shell pane; Tab cycles Agents → Agent graph → Roster → Keepsake → Shell | `CLAUDE_MODS_DISABLE=monitor` |
+| statusline | Folder, model, git branch with dirty mark, context % (yellow > 60, red > 80), effort; < 50 ms | settings.json | remove `statusLine` or `CLAUDE_MODS_DISABLE=statusline` |
+| monitor | Records every agent start, tool call (with the file, host or MCP server it reached) and stop, each prompt's first 120 characters and each notification's type to `~/.claude/agent-monitor/events.jsonl`; the herdr column's Shell pane (`activity-pane`) shows them as **Agents** (status, progress bar, elapsed, tool calls, tokens per agent) and **Agent graph** (animated spawn / message graph) | Shift+Tab in the Shell pane cycles Shell → Agents → Agent graph → Roster → Keepsake → Shell | `CLAUDE_MODS_DISABLE=monitor` |
 | activity-pane | When Claude runs in herdr, a column beside it: Data flow, Shell (+ Agents, Agent graph, Roster: the agents in `~/.claude/agents` and what each does, Keepsake: `~/.claude/keepsake.md`), Tools. A separate function-hooks mod, see `activity-pane/README.md` | add the folder to `CLAUDE_CODE_PLUGIN_DIRS` | remove it from `CLAUDE_CODE_PLUGIN_DIRS` |
-| hud | A browser HUD of the session: agents on a canvas with curved, animated edges, a ring of files/hosts/servers the tools reach, tool flashes, prompt bubbles, toasts (click focuses the terminal), a history scrubber, sound, drag/pin, big-screen mode; "Hey Claude" wake word (on-device) that opens it and a Jarvis panel that runs `claude -p`; starts with Claude, localhost only | opens itself; `python3 hud/serve.py --open` | `CLAUDE_MODS_DISABLE=hud` |
+| read-aloud | A `▶ Read aloud` button above the prompt (and `/read`) that speaks Claude's last answer with the macOS voice; tables are read row by row, paths in words | click it or type `/read`; again to stop | remove it from `CLAUDE_CODE_PLUGIN_DIRS` |
+| activity-status | A status line saying what Claude is doing right now | automatic | remove it from `CLAUDE_CODE_PLUGIN_DIRS` |
+| session-band | A band above the prompt with the Spotify song playing and its controls; `/spotify` | automatic | remove it from `CLAUDE_CODE_PLUGIN_DIRS` |
+| gesture-vscode | Point one finger up at the camera to open the session's folder in VS Code | automatic; asks for camera access once | remove it from `CLAUDE_CODE_PLUGIN_DIRS` |
+| model-guide | A line above the prompt saying which model to use for which work; a click opens the full list | automatic | remove it from `CLAUDE_CODE_PLUGIN_DIRS` |
 | terminals | `lib/termcap` detection, `show-image`, `termcheck`, docs for keybindings, SSH terminfo, rendering | `show-image <file>`, `termcheck` | nothing to disable |
 
 `CLAUDE_MODS_DISABLE` takes a comma-separated list and goes in `settings.json`
@@ -85,9 +84,7 @@ Details and profile settings: `docs/terminals/`.
 ## Security
 
 See `SECURITY.md`. Short version: no secrets in the repo, hooks never read
-credential files, MCP servers are stdio-only, hardware access is mock-only
-until explicitly enabled, database access is read-only at the connection,
-and the repo is signed with an SSH key. The post-quantum story is at the
+credential files, nothing listens on a port, and the repo is signed with an SSH key. The post-quantum story is at the
 transport: GitHub supports ML-KEM-768 hybrid key exchange, Apple's default
 `ssh` does not prefer it, and `SECURITY.md` §3 shows the one-line fix.
 
@@ -99,8 +96,8 @@ shared `lib/termcap` and `lib/events`), `FORMATS.md` is the verbatim format
 reference from the Claude Code docs. Run all tests:
 
 ```
-for t in hooks/*/test.sh skills/*/test.sh lib/test_termcap.sh bin/test_*.sh monitor/test.sh activity-pane/test.sh; do bash "$t" >/dev/null && echo "ok $t" || echo "FAIL $t"; done
-for d in mcp/*/; do (cd "$d" && uv run --quiet --with 'mcp>=1.10,<2' --with 'psycopg[binary]>=3.1,<4' --with 'pyserial>=3.5,<4' python -B -m unittest -q); done
+for t in hooks/*/test.sh lib/test_termcap.sh bin/test_*.sh monitor/test.sh statusline/test.sh activity-pane/test.sh; do bash "$t" >/dev/null && echo "ok $t" || echo "FAIL $t"; done
+for m in activity-status session-band gesture-vscode model-guide read-aloud; do claude plugin test "$m"; done
 ```
 
 MIT licensed.

@@ -8,7 +8,9 @@ const POLL_MS = 250
 
 // Runs a viewer full-pane until q: `draw(feed, view, rows, cols)` gives the
 // lines, `act(view, action, feed, rows, cols)` the view after a key or the wheel.
-export function runViewer({ feedPath, view: first, draw, act }) {
+// The feed is polled from `feedPath`, or, given `load` (async, a feed or undefined for
+// no change), from that.
+export function runViewer({ feedPath, load, view: first, draw, act }) {
   const out = process.stdout
   let feed
   let view = first
@@ -38,6 +40,25 @@ export function runViewer({ feedPath, view: first, draw, act }) {
     }
   }
 
+  let isLoading = false
+  const pull = async () => {
+    if (isLoading) return
+
+    isLoading = true
+    try {
+      const next = await load()
+      if (next !== undefined) {
+        feed = next
+        render()
+      }
+    } catch {
+      // The next poll tries again.
+    } finally {
+      isLoading = false
+    }
+  }
+  const tick = load === undefined ? poll : pull
+
   const restore = () => out.write('\x1b[?1006l\x1b[?1000l\x1b[?25h\x1b[?1049l')
   const quit = () => {
     restore()
@@ -59,7 +80,7 @@ export function runViewer({ feedPath, view: first, draw, act }) {
   })
   out.on('resize', render)
 
-  setInterval(poll, POLL_MS)
-  poll()
+  setInterval(tick, POLL_MS)
+  tick()
   render()
 }

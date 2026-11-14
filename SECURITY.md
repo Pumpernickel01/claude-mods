@@ -2,12 +2,8 @@
 
 ## What this repo is, security-wise
 
-Hooks run with the user's full privileges on every tool call. MCP servers are
-local stdio child processes of Claude Code. Nothing here stores credentials or
-does its own cryptography. One thing listens on a port: the HUD's server, on
-127.0.0.1 only, with a Host and Origin check and a per-run token on every
-request that acts (`hud/README.md`); any process of the same user can still
-read it, as it can read the files it draws from. The repo is PUBLIC.
+Hooks run with the user's full privileges on every tool call. Nothing here
+stores credentials, does its own cryptography or listens on a port. The repo is PUBLIC.
 So the risks are: (1) a hook or server doing something destructive or leaking
 data, (2) the repo itself leaking private information, (3) the delivery path
 (GitHub over SSH) being tampered with. The rules below address those three.
@@ -17,13 +13,6 @@ data, (2) the repo itself leaking private information, (3) the delivery path
 - **Least privilege by default.** Anything that can touch hardware, a
   database or a remote system ships in mock / read-only / dry-run mode and
   needs an explicit opt-in env var *and* a config value to go live.
-  - Scanner MCP: `SCANNER_MCP_REAL=1` plus a device path in its config file;
-    otherwise every tool returns mock data and says so.
-  - DB inspector: read-only is **enforced at the connection** (SQLite
-    `file:...?mode=ro` URI; Postgres `options=-c default_transaction_read_only=on`
-    and a server-side read-only session), *and* the server refuses any
-    statement whose first keyword is not `SELECT`/`WITH`/`EXPLAIN`/`SHOW`/
-    `PRAGMA`. Both layers, not one.
 - **Never read secrets.** No mod reads `.env*`, `~/.ssh/*`, `*.pem`, `*.key`,
   `*credentials*`, `*.kdbx`, keychain (`security` CLI), or cloud credential
   dirs. The dangerous-command guard blocks Claude from doing so via Bash.

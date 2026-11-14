@@ -1,0 +1,5 @@
+{
+  "name": "model-guide",
+  "version": "0.1.0",
+  "description": "A line above the prompt saying which model to use for which work; a click opens the full list"
+}

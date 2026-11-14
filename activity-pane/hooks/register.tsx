@@ -6,20 +6,24 @@ import { flowsOfStep, flowsOfTool, hostOfRemote, inputOf } from './flows'
 import type { Draft } from './flows'
 import {
   FLOW_ROWS,
+  GIT_COLS,
+  GIT_RATIOS,
   MIN_COLUMNS,
+  STRIP_MIN,
   TOOLS_ROWS,
   feedDirOf,
   feedPathOf,
   paneIdOf,
   rectOf,
   ratioKeeping,
+  ratioKeepingWide,
   ratioLeaving,
   ratioText,
   ratiosOf,
   shellCommand,
   viewerCommand,
 } from './herdr'
-import type { Column } from './herdr'
+import type { Column, GitPanes } from './herdr'
 
 const PANE = 'activity'
 const TITLE = 'Activity'
@@ -137,29 +141,77 @@ async function startViewer($: EngineInterface, herdr: Herdr, pane: string, viewe
   await herdrRun($, herdr, ['pane', 'run', pane, viewerCommand($.plugin.root, viewer, herdr.feed)])
 }
 
+const GIT_KEYS = ['files', 'branches', 'commits'] as const
+const GIT_LABEL = { files: 'Files', branches: 'Branches', commits: 'Commits' }
+
+// A git viewer reads the repository itself (no feed file): the folder Claude runs in.
+async function startGit($: EngineInterface, herdr: Herdr, pane: string, key: keyof GitPanes) {
+  await herdrRun($, herdr, ['pane', 'rename', pane, GIT_LABEL[key]])
+  await herdrRun($, herdr, ['pane', 'run', pane, viewerCommand($.plugin.root, `git_${key}`, herdr.root)])
+}
+
 const columnKey = (herdr: Herdr) => `column:${herdr.pane}`
 
-// Splits Claude's pane right, then that pane down twice: data flow, shell, tools.
-async function build($: EngineInterface, herdr: Herdr): Promise<Column> {
+// Splits Claude's pane right (its own size never changes), then, when the right half is wide
+// enough, that pane right again for the column, leaving it the git strip's Files; the column's
+// pane down twice (data flow, shell, tools) and the strip's down twice (Files, Branches, Commits).
+async function build($: EngineInterface, herdr: Herdr, withGit: boolean): Promise<Column> {
   const made: string[] = []
   try {
     const ratios = ratiosOf(await heightIn($, herdr, herdr.pane))
-    const flow = await split($, herdr, herdr.pane, 'right', 0.5)
-    made.push(flow)
+    const right = await split($, herdr, herdr.pane, 'right', 0.5)
+    made.push(right)
+    const wide = withGit ? (await sizeOf($, herdr, right)).width : 0
+    const hasStrip = wide >= STRIP_MIN
+    const flow = hasStrip ? await split($, herdr, right, 'right', ratioKeepingWide(wide, GIT_COLS)) : right
+    if (hasStrip) made.push(flow)
     const shell = await split($, herdr, flow, 'down', ratios.flow)
     made.push(shell)
     const tools = await split($, herdr, shell, 'down', ratios.tools)
     made.push(tools)
+    let git: GitPanes | undefined
+    if (hasStrip) {
+      const branches = await split($, herdr, right, 'down', GIT_RATIOS.files)
+      made.push(branches)
+      const commits = await split($, herdr, branches, 'down', GIT_RATIOS.branches)
+      made.push(commits)
+      git = { files: right, branches, commits }
+    }
 
     await herdrRun($, herdr, ['pane', 'rename', shell, 'Shell'])
     await herdrRun($, herdr, ['pane', 'run', shell, shellCommand($.plugin.root, herdr.feed)])
-    await Promise.all([startViewer($, herdr, flow, 'flow'), startViewer($, herdr, tools, 'tools')])
+    await Promise.all([
+      startViewer($, herdr, flow, 'flow'),
+      startViewer($, herdr, tools, 'tools'),
+      ...(git === undefined ? [] : GIT_KEYS.map(key => startGit($, herdr, git[key], key))),
+    ])
 
-    return { flow, shell, tools }
+    return git === undefined ? { flow, shell, tools } : { flow, shell, tools, git }
   } catch (error) {
     await Promise.all(made.map(pane => close($, herdr, pane)))
     throw error
   }
+}
+
+// Makes again the git panes that are gone while some are left; all gone, they were closed on
+// purpose and stay so. Each is split down from a neighbour that is there (Files, which sits
+// on top, is swapped above it).
+async function repairGit($: EngineInterface, herdr: Herdr, git: GitPanes) {
+  const alive = await Promise.all(GIT_KEYS.map(key => isAlive($, herdr, git[key])))
+  if (alive.every(Boolean) || !alive.some(Boolean)) return git
+
+  const now = { ...git }
+  for (const [at, key] of GIT_KEYS.entries()) {
+    if (alive[at]) continue
+
+    const anchor = key === 'files' ? (alive[1] ? now.branches : now.commits) : key === 'branches' ? now.files : now.branches
+    now[key] = await split($, herdr, anchor, 'down', 0.5)
+    if (key === 'files') await herdrRun($, herdr, ['pane', 'swap', '--source-pane', anchor, '--target-pane', now[key]])
+    alive[at] = true
+    await startGit($, herdr, now[key], key)
+  }
+
+  return now
 }
 
 // Opens the column beside Claude, or makes again what is gone of it. A shell
@@ -185,11 +237,14 @@ async function openColumn($: EngineInterface, herdr: Herdr) {
       await startViewer($, herdr, flow, 'flow')
       column.flow = flow
     }
+    if (known.git !== undefined) column.git = await repairGit($, herdr, known.git)
   } else {
     if (known !== undefined) {
-      await Promise.all([hasFlow && close($, herdr, known.flow), hasTools && close($, herdr, known.tools)])
+      const gone = Object.values(known.git ?? {})
+      await Promise.all([hasFlow && close($, herdr, known.flow), hasTools && close($, herdr, known.tools), ...gone.map(pane => close($, herdr, pane))])
     }
-    column = await build($, herdr)
+    // an old-shape column that has to be rebuilt stays an old-shape column
+    column = await build($, herdr, known === undefined || known.git !== undefined)
   }
 
   await $.store.set(columnKey(herdr), column)
@@ -294,6 +349,10 @@ export const register: Register = on => {
       name: 'activity',
       description: 'Open the activity column beside Claude in herdr, or the Activity pane elsewhere',
     })
+    // Kept for scout/maker tabs the removed worker feature left running (CLAUDE_MODS_ROLE is
+    // set in them): a hot reload re-runs this hook there, and they must not grow columns.
+    // Delete these two lines once no such tab is left.
+    if (await $.env.get('CLAUDE_MODS_ROLE')) return next(e)
     live.api = await apiOf($)
     live.herdr = e.isInteractive ? await herdrOf($, await $.session.root()) : undefined
     // no private folder for the feed, no column: the Activity pane inside Claude instead
@@ -312,7 +371,7 @@ export const register: Register = on => {
     if (herdr !== undefined && EXITS.has(e.reason)) {
       const known = (await $.store.get(columnKey(herdr))) as Column | undefined
       if (known !== undefined) {
-        await Promise.all([known.flow, known.shell, known.tools].map(pane => close($, herdr, pane)))
+        await Promise.all([known.flow, known.shell, known.tools, ...Object.values(known.git ?? {})].map(pane => close($, herdr, pane)))
         await $.store.delete(columnKey(herdr))
       }
     }

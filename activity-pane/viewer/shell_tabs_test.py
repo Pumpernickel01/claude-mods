@@ -106,6 +106,9 @@ class Views(Files):
         self.assertIn("─ spawn  ┄ message  • talking  grey: finished  █ progress", lines[-1])
         self.assertTrue(all(len(line) <= 80 for line in lines))
 
+    def test_header_lists_all_views_with_the_shown_one_in_brackets(self):
+        self.assertEqual(shell_tabs.header("graph"), "Shell · Agents · [Agent graph] · Roster · Keepsake · Shift+Tab next")
+
     def test_tab_strip_names_all_five_views(self):
         self.assertTrue(plain([shell_tabs.tab_strip("graph", 100)])[0].startswith(" Shell  Agents  Agent graph  Roster  Keepsake "))
 
@@ -433,7 +436,7 @@ class Wrapper(Files):
                     return seen
         self.fail(f"never saw {pattern!r}; got {seen[-400:]!r}")
 
-    def test_tab_cycles_shell_agents_graph_roster_keepsake_and_c_clears_finished(self):
+    def test_shift_tab_cycles_shell_agents_graph_roster_keepsake_and_c_clears_finished(self):
         env = {**os.environ, "SHELL": "/bin/sh", "CLAUDE_MODS_EVENT_LOG": self.log, "PS1": "$ ", "HOME": self.dir.name}
         env.pop("HERDR_PANE_ID", None)
         os.makedirs(os.path.join(self.dir.name, ".claude", "agents"))
@@ -449,24 +452,28 @@ class Wrapper(Files):
             # quotes split the word, so the echoed command line cannot match before the output does
             os.write(fd, b"echo be''fore\r")
             self.read_until(fd, rb"before")
-            os.write(fd, b"\t")
+            os.write(fd, b"\t")  # Tab at the prompt is the shell's: completion, never a view
+            time.sleep(0.2)
+            os.write(fd, b"echo pro''mpt\r")
+            self.assertNotIn(b"\x1b[?1049h", self.read_until(fd, rb"prompt"))
+            os.write(fd, shell_tabs.SHIFT_TAB)
             self.read_until(fd, rb"\x1b\[\?1049h(.|\n)*Agent graph(.|\n)*Explore")
             os.write(fd, b"printf du''ring\r")  # typed into the view: never reaches the shell
             os.write(fd, b"c")  # both of the fixture's agents are finished
             self.read_until(fd, rb"agents 0 running / 0 done / 0 failed")
-            os.write(fd, b"\t")
+            os.write(fd, shell_tabs.SHIFT_TAB)
             self.read_until(fd, rb"\xe2\x97\x8f main")
-            os.write(fd, b"\t")
+            os.write(fd, shell_tabs.SHIFT_TAB)
             self.read_until(fd, rb"@agent-tester(.|\n)*Tests things")
-            os.write(fd, b"\t")
+            os.write(fd, shell_tabs.SHIFT_TAB)
             self.read_until(fd, rb"Remember this")
-            os.write(fd, b"\t")
+            os.write(fd, shell_tabs.SHIFT_TAB)
             out = self.read_until(fd, rb"\x1b\[\?1049l")
             os.write(fd, b"echo af''ter\r")
             out += self.read_until(fd, rb"after")
             self.assertNotIn(b"during", out)
-            os.write(fd, shell_tabs.SHIFT_TAB)  # back one from the shell: Keepsake
-            self.read_until(fd, rb"\x1b\[\?1049h(.|\n)*Remember this")
+            os.write(fd, shell_tabs.SHIFT_TAB)  # from the shell: Agents again, cleared above
+            self.read_until(fd, rb"\x1b\[\?1049h(.|\n)*agents 0 running")
             os.write(fd, b"\x1b")
             self.read_until(fd, rb"\x1b\[\?1049l")
             os.write(fd, b"cat\r")  # a program the shell runs keeps its Tab

@@ -1,10 +1,10 @@
 # statusline
 
-One-line Claude Code status line: model, git branch with dirty/clean mark, context usage with a
-10-cell bar, session cost, and effort level.
+One-line Claude Code status line: folder, model, git branch with dirty/clean mark, context usage with a
+10-cell bar, and effort level. Cost is left to the band above the prompt.
 
 ```
-Opus  git:main● wt:feature-xyz  ctx 30% [███░░░░░░░]  $0.01  effort:high
+dirty  Opus  git:main● wt:feature-xyz  ctx 30% [███░░░░░░░]  effort:high
 ```
 
 - Context colour: green up to 60 %, yellow above 60 %, red above 80 %. `ctx –` while
@@ -14,7 +14,7 @@ Opus  git:main● wt:feature-xyz  ctx 30% [███░░░░░░░]  $0.0
   Each git call has a 50 ms timeout; the result is cached for 3 s per directory in
   `~/.cache/claude-mods/statusline/`, so large repos never slow the prompt. Not a repo, or git too
   slow: the git segment is simply omitted. `workspace.git_worktree` is shown as `wt:<name>`.
-- Width: reads `COLUMNS`; when the line is too long it drops the bar, then the cost, then effort.
+- Width: reads `COLUMNS`; when the line is too long it drops the bar, then effort.
 - Any internal error prints just the model name and exits 0, never a traceback.
 
 ## Use

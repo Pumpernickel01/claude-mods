@@ -3,14 +3,13 @@
 
     python3 shell_tabs.py <feed file>
 
-The shell runs in a pty and passes straight through. Tab cycles Shell -> Agents
--> Agent graph -> Roster -> Keepsake -> Shell, Shift+Tab goes back one, Esc or q
-returns to the shell.
-In the shell, Tab switches only at the prompt: a program the shell runs keeps its
-Tab. Arrows, PgUp/PgDn and the mouse wheel scroll a view taller than the pane; c
+The shell runs in a pty and passes straight through. Shift+Tab cycles Shell ->
+Agents -> Agent graph -> Roster -> Keepsake -> Shell, Esc or q returns to the
+shell; Tab stays with the shell, for its completion.
+Arrows, PgUp/PgDn and the mouse wheel scroll a view taller than the pane; c
 clears finished agents. A view draws on the alternate screen, so the shell's own
 screen comes back as it was; what the shell printed meanwhile is held and written
-on return. herdr's pane title follows the view.
+on return. herdr's pane title lists every view, the shown one in brackets.
 
 Agents shows every agent the moment it is spawned, sub-agents under the agent that
 spawned them, and who started, messaged or answered whom; finished agents stay,
@@ -412,6 +411,11 @@ class Agents:
         return changed
 
 
+def header(view):
+    """The pane's title: Shell · [Agents] · Agent graph · Roster · Keepsake · Shift+Tab next."""
+    return " · ".join(f"[{LABELS[v]}]" if v == view else LABELS[v] for v in VIEWS) + " · Shift+Tab next"
+
+
 def tab_strip(view, cols):
     """Shell  Agents  Agent graph, the shown one bold on surface0, and the keys at the right."""
     parts, used = [], 0
@@ -420,7 +424,7 @@ def tab_strip(view, cols):
         piece = line_of([(label, "text" if v == view else "overlay1", v == view)], cols - used)
         parts.append(f"\x1b[48;2;{rgb('surface0')}m{piece}\x1b[49m" if v == view and piece else piece)
         used += len(label)
-    hint = "Tab next · Shift+Tab back · c clear finished · Esc shell"
+    hint = "Shift+Tab next · c clear finished · Esc shell"
     if cols - used > len(hint) + 2:
         parts.append(line_of([(" " * (cols - used - len(hint) - 1) + hint, "overlay0", False)], cols - used))
     return "".join(parts)
@@ -884,17 +888,10 @@ def main():
     def title(view):
         if pane:
             try:
-                subprocess.run([herdr, "pane", "rename", pane, LABELS[view]], stdin=subprocess.DEVNULL,
+                subprocess.run([herdr, "pane", "rename", pane, header(view)], stdin=subprocess.DEVNULL,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
             except (OSError, subprocess.SubprocessError):
                 pass
-
-    def at_prompt():
-        """True while the shell itself has the terminal, not a program it runs."""
-        try:
-            return os.tcgetpgrp(fd) == pid
-        except OSError:
-            return False
 
     def mouse_back():
         """Mouse reports off again, or as the program in the shell had them."""
@@ -925,10 +922,8 @@ def main():
         page = max(1, size_of(0)[0] // 2)
         for key in KEYS.findall(data):
             at = VIEWS.index(state["view"])
-            if key == b"\t":
+            if key == SHIFT_TAB:
                 show(VIEWS[(at + 1) % len(VIEWS)])
-            elif key == SHIFT_TAB:
-                show(VIEWS[at - 1])
             elif key in (b"\x1b", b"q"):
                 show("shell")
             elif key == b"c":
@@ -943,6 +938,7 @@ def main():
 
     signal.signal(signal.SIGWINCH, resize)
     resize()
+    title("shell")  # the hook named the pane "Shell": show the other views from the start
     if saved:
         tty.setraw(0)
     status = None
@@ -986,16 +982,11 @@ def main():
                 if not data:
                     break
                 if state["view"] == "shell":
-                    # Tab alone in a read is the key, not part of a paste; at the prompt only, so a
-                    # program the shell runs keeps its Tab
-                    if data == b"\t" and at_prompt():
-                        show("agents")
-                    else:
-                        before, hit, after = data.partition(SHIFT_TAB)
-                        write(before, fd)
-                        if hit:
-                            show(VIEWS[-1])
-                            keys_in_view(after)
+                    before, hit, after = data.partition(SHIFT_TAB)
+                    write(before, fd)
+                    if hit:
+                        show(VIEWS[1])
+                        keys_in_view(after)
                 else:
                     keys_in_view(data)
             if state["view"] != "shell":

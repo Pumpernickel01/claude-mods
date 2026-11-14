@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude Code status line: model, git branch + dirty mark, context bar, cost, effort on one line.
+"""Claude Code status line: folder, model, git branch + dirty mark, context bar, effort on one line.
 
 Reads the statusLine stdin JSON (FORMATS.md 3). Colours come from lib/termcap.py: 24-bit SGR
 only when tc.truecolor, else 256-colour indices. Git state is cached 3 s per directory so big
@@ -78,13 +78,15 @@ def main():
         return (f"\x1b[38;2;{r};{g};{b}m" if tc.truecolor else f"\x1b[38;5;{idx}m") + s + "\x1b[0m"
 
     ws = data.get("workspace") or {}
-    st = git_state(ws.get("current_dir") or data.get("cwd") or os.getcwd())
+    cwd = ws.get("current_dir") or data.get("cwd") or os.getcwd()
+    st = git_state(cwd)
+    folder = os.path.basename(cwd.rstrip("/"))
     pct = (data.get("context_window") or {}).get("used_percentage")
-    cost = (data.get("cost") or {}).get("total_cost_usd")
     effort = (data.get("effort") or {}).get("level")
 
-    def build(paint, bar, with_cost, with_effort):
-        segs = [(" " if nf else "") + MODEL]
+    # No cost here: the band above the prompt shows it.
+    def build(paint, bar, with_effort):
+        segs = ([folder] if folder else []) + [(" " if nf else "") + MODEL]
         if st:
             mark = ("●" if st[1] else "○") if uni else ("*" if st[1] else "-")
             g = (" " if nf else "git:") + st[0] + mark
@@ -97,8 +99,6 @@ def main():
             full, empty = ("█", "░") if uni else ("#", ".")
             ctx = f"ctx {pct:.0f}%" + (f" [{full * n}{empty * (10 - n)}]" if bar else "")
             segs.append(paint(role, ctx))
-        if with_cost and cost is not None:
-            segs.append(f"${cost:.2f}")
         if with_effort and effort:
             segs.append(paint("dim", f"effort:{effort}"))
         return "  ".join(segs)
@@ -107,7 +107,7 @@ def main():
         cols = int(os.environ.get("COLUMNS", 0))
     except ValueError:
         cols = 0
-    for flags in ((1, 1, 1), (0, 1, 1), (0, 0, 1), (0, 0, 0)):  # drop bar, then cost, then effort
+    for flags in ((1, 1), (0, 1), (0, 0)):  # drop bar, then effort
         if not cols or len(build(lambda r, s: s, *flags)) <= cols:
             break
     print(build(paint, *flags))

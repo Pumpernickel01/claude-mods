@@ -1,5 +1,7 @@
-// The three panes of the column, by herdr pane id.
-export type Column = { flow: string; shell: string; tools: string }
+// The three panes of the column, by herdr pane id, and the git strip beside it when it has one
+// (columns stored before the strip existed have none and are never given one).
+export type GitPanes = { files: string; branches: string; commits: string }
+export type Column = { flow: string; shell: string; tools: string; git?: GitPanes }
 
 // Rows each small pane shows, its header included; herdr spends 2 more on its frame.
 export const FLOW_ROWS = 9
@@ -21,6 +23,18 @@ export const ratioLeaving = (height: number, rows: number) => clamp((height - ro
 
 // The ratio that keeps `rows` in the split pane itself.
 export const ratioKeeping = (height: number, rows: number) => clamp((rows + FRAME) / height)
+
+// The git strip is this many columns wide and opens only when the column keeps COLUMN_MIN beside it.
+export const GIT_COLS = 52
+export const COLUMN_MIN = 68
+export const STRIP_MIN = GIT_COLS + COLUMN_MIN
+
+// The share of the strip's height each pane keeps when split down in turn: Files 40 %, Branches 20 %,
+// Commits 40 % (Branches keeps 20 of the 60 left below Files).
+export const GIT_RATIOS = { files: 0.4, branches: 0.2 / 0.6 }
+
+// The ratio that keeps `columns` in the split pane itself, for a split to the right.
+export const ratioKeepingWide = (width: number, columns: number) => clamp(columns / width)
 
 export const ratioText = (ratio: number) => ratio.toFixed(4)
 
@@ -47,7 +61,8 @@ export const rectOf = (stdout: string, pane: string) => {
 const quoted = (text: string) => `'${text.replace(/'/g, `'\\''`)}'`
 
 // What a viewer pane's shell is told to run; `exec`, so quitting it closes the pane.
-export const viewerCommand = (root: string, viewer: 'flow' | 'tools', feed: string) =>
+// The git viewers take the repository's folder where the others take the feed.
+export const viewerCommand = (root: string, viewer: 'flow' | 'tools' | 'git_files' | 'git_branches' | 'git_commits', feed: string) =>
   `exec node ${quoted(`${root}/viewer/${viewer}.mjs`)} ${quoted(feed)}`
 
 // The shell pane's command: a shell wrapped so Tab cycles it with Agents and Agent graph.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "claude-mods",
-  "description": "Pumpernickel01's Claude Code mods: hooks, skills, subagents, MCP servers, status line and agent monitor for macOS terminals.",
+  "description": "Pumpernickel01's Claude Code mods: hooks, subagents, status line, agent monitor and interface mods for macOS terminals.",
   "owner": {
     "name": "Pumpernickel01",
     "url": "https://github.com/Pumpernickel01"
@@ -10,7 +10,7 @@
     {
       "name": "mods",
       "source": "./",
-      "description": "Hooks, skills, subagents, MCP servers, status line and a live agent monitor for Claude Code on macOS (Terminal.app and Ghostty).",
+      "description": "Hooks, subagents, a status line and a live agent monitor for Claude Code on macOS (Terminal.app and Ghostty).",
       "version": "0.1.0",
       "category": "productivity"
     }

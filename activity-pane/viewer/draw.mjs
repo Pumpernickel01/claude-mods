@@ -21,7 +21,7 @@ const rgb = hex => [1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16)).join
 
 export const paint = (hex, text) => (text === '' ? '' : `\x1b[38;2;${rgb(hex)}m${text}\x1b[39m`)
 export const bold = text => `\x1b[1m${text}\x1b[22m`
-const onSelected = text => `\x1b[48;2;${rgb(MOCHA.surface0)}m${text}\x1b[49m`
+export const onSelected = text => `\x1b[48;2;${rgb(MOCHA.surface0)}m${text}\x1b[49m`
 
 const NONE = /[\p{M}‍︎️]/u
 const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]|\p{Emoji_Presentation}/u
@@ -128,7 +128,7 @@ export const actionsOf = chunk => {
 }
 
 // A header: what the pane is on the left, how far it is scrolled on the right.
-const headerOf = (left, right, cols) => {
+export const headerOf = (left, right, cols) => {
   const room = Math.max(0, cols - cellsOf(right) - 1)
 
   return paint(MOCHA.overlay1, fit(left, room)) + ' ' + paint(MOCHA.overlay0, right)

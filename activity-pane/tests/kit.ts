@@ -5,11 +5,13 @@ export const BIN = '/opt/homebrew/bin/herdr'
 
 type Other = (argv: readonly string[]) => string | undefined
 
-// herdr as the mod sees it: panes with heights, split, closed, swapped, renamed
-// and run in; Claude's pane `width` wide. `other` answers any other program,
+// herdr as the mod sees it: panes with heights and widths, split, closed, swapped, renamed
+// and run in; the window `width` wide, a right split giving the split pane the share
+// `--ratio` names and the new pane the rest. `other` answers any other program,
 // its stdout or undefined to fail it.
 export function herdr(on: On, { height = 61, width = 218, other }: { height?: number; width?: number; other?: Other } = {}) {
   const panes = new Map<string, number>([['w0:p1', height]])
+  const widths = new Map<string, number>([['w0:p1', width]])
   const ran: string[][] = []
   const failing = new Set<string>()
   const installs: string[][] = []
@@ -43,28 +45,30 @@ export function herdr(on: On, { height = 61, width = 218, other }: { height?: nu
 
       made += 1
       const id = `w0:p${made}`
+      const wide = widths.get(from) ?? 0
       if (flag('--direction') === 'down') {
         const kept = Math.round(tall * Number(flag('--ratio')))
         panes.set(from, kept)
         panes.set(id, tall - kept)
+        widths.set(id, wide)
       } else {
+        const kept = Math.round(wide * Number(flag('--ratio')))
+        widths.set(from, kept)
+        widths.set(id, wide - kept)
         panes.set(id, tall)
       }
 
       return answer(JSON.stringify({ result: { pane: { pane_id: id } } }))
     }
     if (verb === 'layout') {
-      const split = panes.size > 1
-      const list = [...panes].map(([pane_id, rows]) => ({
-        pane_id,
-        rect: { width: pane_id === 'w0:p1' && !split ? width : Math.floor(width / 2), height: rows },
-      }))
+      const list = [...panes].map(([pane_id, rows]) => ({ pane_id, rect: { width: widths.get(pane_id) ?? 0, height: rows } }))
 
       return answer(JSON.stringify({ result: { layout: { panes: list } } }))
     }
     if (verb === 'get') return panes.has(args[2] ?? '') ? answer('{}') : answer('', 1, 'pane not found')
     if (verb === 'close') {
       panes.delete(args[2] ?? '')
+      widths.delete(args[2] ?? '')
 
       return answer('{}')
     }
@@ -80,6 +84,7 @@ export function herdr(on: On, { height = 61, width = 218, other }: { height?: nu
 
   return {
     panes,
+    widths,
     ran,
     failing,
     installs,
@@ -94,7 +99,7 @@ export function herdr(on: On, { height = 61, width = 218, other }: { height?: nu
   }
 }
 
-export function session(on: On, env: Record<string, string>) {
+export function session(on: On, env: Record<string, string>, root = '/Users/me/lab2') {
   mock.env(on, env)
   mock.store(on)
   const written: { path: string; text: string }[] = []
@@ -103,7 +108,7 @@ export function session(on: On, env: Record<string, string>) {
 
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
-  on('session.root', () => ({ value: '/Users/me/lab2' }))
+  on('session.root', () => ({ value: root }))
   on('session.id', () => ({ value: 's1' }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
   on('fs.write', (_$, e) => {
@@ -125,4 +130,4 @@ export function session(on: On, env: Record<string, string>) {
   return { written, opened, toasts }
 }
 
-export const IN_HERDR = { HERDR_ENV: '1', HERDR_PANE_ID: 'w0:p1', HERDR_BIN_PATH: BIN, TMPDIR: '/tmp/t/', HOME: '/Users/me' }
+export const IN_HERDR = { HERDR_ENV: '1', HERDR_PANE_ID: 'w0:p1', HERDR_WORKSPACE_ID: 'w0', HERDR_BIN_PATH: BIN, TMPDIR: '/tmp/t/', HOME: '/Users/me' }

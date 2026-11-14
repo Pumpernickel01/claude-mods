@@ -237,3 +237,60 @@ Markdown drawn by `md_rows` (stdlib `textwrap`), read at each redraw. They went
 to the Shell pane, not the Tools pane, because a memo needs rows: Tools has
 four. The Data flow pane's Guide tab was removed for the same reason; the file
 `~/.claude/workflow-guide.md` is left where it is.
+
+## Addendum 2026-11-06: a scout tab beside the main session
+
+The user's side ideas (scope something on the web, generate something) were
+costing a new workspace, a `cd` and a fresh `claude` each time, or a wait for the
+main session. At `session.start` in herdr the mod now also makes sure one worker
+per project is warm, one per name in `WORKERS` (`scout` looks things up, `maker`
+generates things): a tab labelled with the name in Claude's workspace (`herdr tab
+create --no-focus`, same cwd, `CLAUDE_MODS_ROLE=<name>` in its environment), and
+`herdr agent start <name>-<project folder> --kind claude -- -n <name>` in it, run
+detached because `agent start` returns only when Claude is ready: through
+`python3 -c` and `subprocess.Popen(…, start_new_session=True, close_fds=True)`,
+every stream on `/dev/null`. The first cut used `sh -c … &`; herdr's server log
+showed that whenever herdr accepted the start at once (the new tab's shell already
+at its prompt), the hook's `process.run` never returned, was killed at 5 s, and
+the next worker was never made, so a workspace got `scout` but no `maker`. The
+same log shows a hot reload of this module re-running `session.start` in every
+live session some seconds later. The herdr name is the project folder's basename in herdr's characters,
+cut to 32; the sidebar row reads the name from `-n`. Skipped when `herdr agent
+get` finds the worker alive, and inside a worker (the role variable), which also
+opens no column. In the home folder, trusted one session at a time, each worker
+waits at Claude's trust question until the user answers it in its tab; the mod
+never answers it. Tests: `tests/workers.test.tsx`, herdr mocked. Known shortcut:
+a worker that exits leaves its tab; the next start opens a second one.
+
+## Addendum 2026-11-12: the worker tabs are removed
+
+The user found the scout and maker tabs not good enough in use and prefers to make
+new tabs by hand. `openWorkers`, `WORKERS`, `workerName`, `rootPaneOf` and the
+detached `agent start` are gone; the mod no longer calls `herdr tab create` or
+`herdr agent start`. The `CLAUDE_MODS_ROLE` early return in `session.start` stays
+until no scout or maker tab is left running, because a hot reload re-runs
+`session.start` in them and they must not grow columns; delete it then. The
+addendum above is kept as history. Tests: `tests/workers.test.tsx` now checks that
+no tab is made and that a leftover worker session opens no column.
+
+## Addendum 2026-11-12: the git strip
+
+Between Claude and the column, a strip of three panes (Files, Branches, Commits; 52
+columns wide, about 40 / 20 / 40 % of the height) shows the repository Claude runs in.
+Version 1 is read-only: selection and scrolling only, no stage, commit or checkout.
+Layout on a 245x61 window: Claude 123 (unchanged: the first split is still right at
+0.5), strip 52, column 70. The new right pane becomes Files; it is split right keeping
+52 columns (`ratioKeepingWide`) and the new pane is Data flow, then down, down as before
+(heights unchanged: 11 / 43 / 7); Files is then split down twice. The width rule: the
+strip is built only when the right half measures at least `GIT_COLS + COLUMN_MIN` (52 + 68
+= 120) after the first split; narrower, the column is today's, with no strip. The viewers
+poll git themselves (no feed file; `runViewer` takes `load` instead of `feedPath`):
+Files every 2 s, Branches and Commits when the mtime of `.git/HEAD`, `refs`,
+`packed-refs` or `logs/HEAD` changes. Every call is `git --no-optional-locks -c
+core.fsmonitor=false` through `execFile` with an argument array (no shell), with
+`GIT_OPTIONAL_LOCKS=0`, a 3 s timeout and no overlapping runs, so `status` never takes
+`index.lock` under Claude's own git. Old-shape columns (stored without `git`) are left
+alone: no strip is ever inserted into one, and one rebuilt after its shell is lost is
+rebuilt without a strip. Repair: some git panes gone, the rest are split down to make
+them again; all gone, they stay closed. Known shortcut: a linked worktree's refs are not
+watched. Tests: `viewer/git.spec.mjs`, and the strip cases in `tests/column.test.tsx`.

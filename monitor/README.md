@@ -26,8 +26,8 @@ Agents the log never saw start (forks Claude Code runs itself, such as
 compaction) are left out. Messages sent to an agent's name find it: the
 PreToolUse `Agent` record carries the `name` it was given.
 
-Shift+Tab in the shell opens Agents; there Tab cycles Agents → Agent graph →
-Shell, Shift+Tab goes back one, Esc or q returns to the shell. See
+Shift+Tab in the shell opens Agents and cycles on: Agents → Agent graph →
+Roster → Keepsake → Shell; Esc or q returns to the shell. See
 activity-pane for the rest.
 
 ## Data and privacy
