@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { speakable } from './speakable'
+import { isLithuanian, speakable } from './speakable'
 
 const answer = atom({ plugin: 'read-aloud', key: 'answer' } as const, null)
 const isSpeaking = atom({ plugin: 'read-aloud', key: 'isSpeaking' } as const, false)
@@ -21,7 +21,9 @@ async function toggle($: EngineInterface, voice: Voice): Promise<'started' | 'st
   if (text === null) return 'nothing'
 
   // `say` reads standard input, so no length limit and no shell quoting.
-  const child = $.process.spawn({ argv: ['say'], input: speakable(text) })
+  // shortcut: Lithuanian is read by the macOS voice Ona, which must be installed; make the voice an option when someone needs another.
+  const argv = isLithuanian(text) ? ['say', '-v', 'Ona'] : ['say']
+  const child = $.process.spawn({ argv, input: speakable(text) })
   const ended = async () => {
     if (voice.stop !== stop) return
     voice.stop = undefined

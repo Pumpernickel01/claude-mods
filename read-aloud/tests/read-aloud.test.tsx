@@ -50,3 +50,22 @@ test('play reads the last main answer with say, stop ends it', async ($, on) => 
   expect(killed).toBe(1)
   await ui.unmount()
 })
+
+test('a Lithuanian answer is read by the Lithuanian voice, in Lithuanian words', async ($, on) => {
+  const spoken: string[] = []
+  on('turn.complete', () => ({ text: '' }))
+  on('process.spawn', async function* (_$, e, next) {
+    spoken.push(`${e.argv.join(' ')}: ${e.input}`)
+    await new Promise<void>(done => next.signal.addEventListener('abort', () => done()))
+
+    return { value: { code: 0, signal: null } }
+  })
+
+  await $.turn.complete(turn('**Štai atsakymas:** užduotis įvykdyta.\n\n```sh\nls\n```'))
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'read' })
+  expect(spoken).toEqual(['say -v Ona: Štai atsakymas: užduotis įvykdyta.\nKodo blokas praleistas.'])
+
+  await ui.press({ key: 'read' })
+  await ui.unmount()
+})

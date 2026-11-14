@@ -32,16 +32,27 @@ function tablesSpoken(markdown: string): string {
   return out.join('\n')
 }
 
+// Lithuanian letters in the text: the answer is Lithuanian and needs a Lithuanian voice.
+export const isLithuanian = (text: string) => (text.match(/[ąčęėįšųūž]/gi) ?? []).length >= 3
+
+// The few words the reading adds itself, in the answer's language.
+const WORDS = {
+  en: { code: 'Code block skipped.', home: 'home folder, ', slash: ' slash ' },
+  lt: { code: 'Kodo blokas praleistas.', home: 'namų aplankas, ', slash: ' ' },
+}
+
 // Markdown as a voice should say it: no symbols, no code, paths in words.
 export function speakable(markdown: string): string {
-  return tablesSpoken(markdown.replace(/```[\s\S]*?(```|$)/g, '\nCode block skipped.\n'))
+  const words = WORDS[isLithuanian(markdown) ? 'lt' : 'en']
+
+  return tablesSpoken(markdown.replace(/```[\s\S]*?(```|$)/g, `\n${words.code}\n`))
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/^[ \t]*(#{1,6}|>|[-*+]|\d+\.)\s+(.*)$/gm, '$2.')
     .replace(/[*`#<>|]/g, '')
     .replace(/_/g, ' ')
-    .replace(/~\//g, 'home folder, ')
+    .replace(/~\//g, words.home)
     .replace(/\/+(?=[\s.,;:)]|$)/gm, '')
-    .replace(/\s*\/\s*/g, ' slash ')
+    .replace(/\s*\/\s*/g, words.slash)
     .replace(/(^|\() slash /gm, '$1slash ')
     .replace(/([.:!?])\.$/gm, '$1')
     .replace(/\n{2,}/g, '\n')
