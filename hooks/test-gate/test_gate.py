@@ -99,6 +99,12 @@ def main():
     except ValueError:
         timeout = 120
     shown = " ".join(cmd)
+    marker = os.path.join(os.path.expanduser("~"), ".cache", "claude-mods", "test-gate",
+                          re.sub(r"[^\w.-]", "_", str(data.get("session_id", "none"))))
+    # Full diff, not --stat: an edit with the same line counts is a different tree.
+    tree = hashlib.sha1((git(root, "diff", "HEAD") or "").encode()).hexdigest()
+    if read(marker + ".pass").strip() == tree:
+        return  # this exact tree already passed; a question-only turn costs nothing
     env = {**os.environ, "CI": "1", "FORCE_COLOR": "0"}
     proc = subprocess.Popen(cmd, cwd=d, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, env=env, start_new_session=True)
@@ -110,20 +116,19 @@ def main():
         print(json.dumps({"systemMessage": f"test-gate: `{shown}` exceeded {timeout}s and was skipped; "
                                            "set CLAUDE_MODS_TEST_TIMEOUT to raise."}))
         return
-    marker = os.path.join(os.path.expanduser("~"), ".cache", "claude-mods", "test-gate",
-                          re.sub(r"[^\w.-]", "_", str(data.get("session_id", "none"))))
+    os.makedirs(os.path.dirname(marker), mode=0o700, exist_ok=True)
     if proc.returncode == 0:
         try:
             os.remove(marker)
         except OSError:
             pass
+        with open(marker + ".pass", "w") as f:
+            f.write(tree)
         return
-    tree = hashlib.sha1((git(root, "diff", "HEAD", "--stat") or "").encode()).hexdigest()
     if read(marker).strip() == tree:
         print(json.dumps({"systemMessage": f"test-gate: `{shown}` still fails (exit {proc.returncode}) and the "
                                            "tree is unchanged since the last block; not blocking again."}))
         return
-    os.makedirs(os.path.dirname(marker), mode=0o700, exist_ok=True)
     with open(marker, "w") as f:
         f.write(tree)
     head = f"test-gate: `{shown}` failed (exit {proc.returncode}). Fix the failing tests, then stop again. Last 40 lines:\n"

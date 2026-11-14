@@ -53,6 +53,14 @@ case "$out" in *'"decision"'*) bad "(h) same tree hash twice -> second run does 
 out="$(FAKE_NPM_EXIT=0 run_gate "$NPM" s1 false)"
 [ -z "$out" ] && ok "(b) passing npm test -> silent" || bad "(b) passing npm test -> silent: $out"
 
+n="$(wc -l < "$FAKE_NPM_LOG")"
+out="$(run_gate "$NPM" s1 false)"
+[ -z "$out" ] && [ "$(wc -l < "$FAKE_NPM_LOG")" = "$n" ] && ok "(n) tree already passed -> tests not rerun" || bad "(n) tree already passed -> tests not rerun: $out"
+echo again >> "$NPM/tracked.txt"
+out="$(run_gate "$NPM" s1 false)"
+case "$out" in *'"decision": "block"'*) ok "(o) tree changed after pass -> tests rerun";; *) bad "(o) tree changed after pass -> tests rerun: $out";; esac
+git -C "$NPM" checkout -q tracked.txt && echo change >> "$NPM/tracked.txt"
+
 out="$(run_gate "$NPM" s1 true)"
 [ -z "$out" ] && ok "(d) stop_hook_active -> silent" || bad "(d) stop_hook_active -> silent: $out"
 
