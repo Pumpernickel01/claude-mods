@@ -1,11 +1,12 @@
 import type { Register } from 'claude-code'
 
-// Which model for which work, from the Model routing table in ~/.claude/CLAUDE.md: name, short, full.
+// Which model for which work, and the effort rule, from "Models and effort" in ~/.claude/CLAUDE.md: name, short, full.
 const MODELS = [
   ['Fable 5.2', 'planning', 'planning'],
   ['Opus 5.5', 'review, debugging', 'review, debugging, security'],
   ['Sonnet 5.5', 'coding', 'coding, web research'],
   ['Haiku 5.5', 'searching', 'searching, quick lookups'],
+  ['Effort', 'high, xhigh when hard', 'high by default; /effort xhigh for a hard bug, a design decision or a security review'],
 ] as const
 
 export const register: Register = on => {
