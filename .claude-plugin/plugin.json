@@ -1,7 +1,7 @@
 {
   "name": "mods",
   "displayName": "Claude Mods",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Hooks, subagents, a status line and a live agent monitor for Claude Code on macOS (Terminal.app and Ghostty), Linux-friendly where cheap.",
   "author": {
     "name": "Pumpernickel01",

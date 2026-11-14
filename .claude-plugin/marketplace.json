@@ -11,7 +11,7 @@
       "name": "mods",
       "source": "./",
       "description": "Hooks, subagents, a status line and a live agent monitor for Claude Code on macOS (Terminal.app and Ghostty).",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "category": "productivity"
     }
   ]
