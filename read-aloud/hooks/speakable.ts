@@ -32,8 +32,18 @@ function tablesSpoken(markdown: string): string {
   return out.join('\n')
 }
 
-// Lithuanian letters in the text: the answer is Lithuanian and needs a Lithuanian voice.
-export const isLithuanian = (text: string) => (text.match(/[ąčęėįšųūž]/gi) ?? []).length >= 3
+// Whether the answer itself is Lithuanian, so it needs a Lithuanian voice. Code
+// and paths are left out: an English answer may name a Lithuanian folder.
+export function isLithuanian(text: string): boolean {
+  const words = text
+    .replace(/```[\s\S]*?(```|$)/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .split(/\s+/)
+    .filter(word => word !== '' && !word.includes('/'))
+  const marked = words.filter(word => /[ąčęėįšųūž]/i.test(word)).length
+
+  return marked >= 3 && marked / words.length >= 0.15
+}
 
 // The few words the reading adds itself, in the answer's language.
 const WORDS = {

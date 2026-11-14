@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { speakable } from '../hooks/speakable'
+import { isLithuanian, speakable } from '../hooks/speakable'
 
 const BAND = {
   plugin: 'read-aloud',
@@ -68,4 +68,12 @@ test('a Lithuanian answer is read by the Lithuanian voice, in Lithuanian words',
 
   await ui.press({ key: 'read' })
   await ui.unmount()
+})
+
+test('an English answer that names a Lithuanian folder stays English', () => {
+  const path = '/Users/me/Studijos/Trečias semestras/Tinklų infrastruktūros sauga Vardenis Pavardėnas/lab2'
+
+  expect(isLithuanian(`The report is in \`${path}\`. Nothing else changed.`)).toBe(false)
+  expect(isLithuanian(`The report is in ${path} and nothing else changed in this lab today.`)).toBe(false)
+  expect(isLithuanian('Ataskaita paruošta. Liko įkelti failą į Moodle ir patikrinti šaltinių sąrašą.')).toBe(true)
 })
