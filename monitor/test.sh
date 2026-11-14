@@ -162,7 +162,7 @@ check "disabled via CLAUDE_MODS_DISABLE -> no line" "$(lines)" "$n"
 printf '' | python3 "$HERE/hooks/emit.py" tool_end; check "empty stdin -> exit 0, no line" "$?:$(lines)" "0:$n"
 printf 'garbage' | python3 "$HERE/hooks/emit.py" tool_end; check "bad JSON -> exit 0" "$?" "0"
 python3 - "$HERE/hooks/emit.py" "$TMP/agent.jsonl" <<'EOF' || bad "hook timing"
-import json, subprocess, sys, time
+import json, os, subprocess, sys, time
 emit, tr = sys.argv[1], sys.argv[2]
 base = {"session_id": "abc123", "cwd": "/tmp/proj", "tool_name": "Bash", "tool_input": {}, "tool_use_id": "t"}
 cases = {"session_start": {"hook_event_name": "SessionStart"},
@@ -179,8 +179,11 @@ for kind, extra in cases.items():
     ms = (time.perf_counter() - t0) * 100
     worst = max(worst, ms)
     print(f"     {kind:14s} {ms:5.1f} ms avg of 10")
-print(("ok   - " if worst < 50 else "FAIL - ") + f"every hook kind < 50 ms (worst {worst:.1f} ms)")
-sys.exit(0 if worst < 50 else 1)
+# On a shared CI machine the timing is printed but not enforced: its speed says nothing about a real session.
+on_ci = bool(os.environ.get("CI"))
+slow = worst >= 50 and not on_ci
+print(("FAIL - " if slow else "ok   - ") + f"every hook kind < 50 ms (worst {worst:.1f} ms" + (", not enforced on CI)" if on_ci else ")"))
+sys.exit(1 if slow else 0)
 EOF
 [ $? -eq 0 ] && pass=$((pass+1)) || fail=$((fail+1))
 
