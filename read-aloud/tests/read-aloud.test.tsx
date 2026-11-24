@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
+import { lastSpoken } from '../hooks/highlight'
 import { isLithuanian, speakable } from '../hooks/speakable'
 
 const BAND = {
@@ -42,7 +43,7 @@ test('play reads the last main answer with say, stop ends it', async ($, on) => 
   ui = await $.ui.mount(BAND)
   expect((await ui.find({ type: 'Button' }))?.text).toBe('▶ Read aloud')
   await ui.press({ key: 'read' })
-  expect(spoken).toEqual(['say: Hello there'])
+  expect(spoken).toEqual(['say --interactive=red: Hello there'])
   expect((await ui.find({ type: 'Button' }))?.text).toBe('■ Stop reading')
 
   await ui.press({ key: 'read' })
@@ -64,7 +65,7 @@ test('a Lithuanian answer is read by the Lithuanian voice, in Lithuanian words',
   await $.turn.complete(turn('**Štai atsakymas:** užduotis įvykdyta.\n\n```sh\nls\n```'))
   const ui = await $.ui.mount(BAND)
   await ui.press({ key: 'read' })
-  expect(spoken).toEqual(['say -v Ona: Štai atsakymas: užduotis įvykdyta.\nKodo blokas praleistas.'])
+  expect(spoken).toEqual(['say --interactive=red -v Ona: Štai atsakymas: užduotis įvykdyta.\nKodo blokas praleistas.'])
 
   await ui.press({ key: 'read' })
   await ui.unmount()
@@ -76,4 +77,32 @@ test('an English answer that names a Lithuanian folder stays English', () => {
   expect(isLithuanian(`The report is in \`${path}\`. Nothing else changed.`)).toBe(false)
   expect(isLithuanian(`The report is in ${path} and nothing else changed in this lab today.`)).toBe(false)
   expect(isLithuanian('Ataskaita paruošta. Liko įkelti failą į Moodle ir patikrinti šaltinių sąrašą.')).toBe(true)
+})
+
+test('the parser keeps the newest complete line and the unfinished tail', () => {
+  const frame = (before: string, word: string, after: string) => `\r\x1b[M${before}\x1b[31m${word}\x1b(B\x1b[m${after}`
+  const written = frame('', 'one', ' two three') + frame('one ', 'two', ' three') + frame('one two ', 'thr', 'ee')
+
+  // The last frame has no \r after it yet, so the one before it is the newest complete line.
+  expect(lastSpoken(written).spoken).toEqual({ before: 'one ', word: 'two', after: ' three' })
+  expect(lastSpoken(frame('', 'one', ' two')).spoken).toBeNull()
+})
+
+test('the word being said is highlighted in the band, and cleared when reading stops', async ($, on) => {
+  on('turn.complete', () => ({ text: '' }))
+  on('process.spawn', async function* (_$, _e, next) {
+    yield { stream: 'stdout', text: '\r\x1b[MHello \x1b[31mthere\x1b(B\x1b[m friend\r' }
+    await new Promise<void>(done => next.signal.addEventListener('abort', () => done()))
+
+    return { value: { code: 0, signal: null } }
+  })
+
+  await $.turn.complete(turn('Hello there friend'))
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'read' })
+  expect((await ui.find({ type: 'Text', text: /Hello there friend/ }))).toBeDefined()
+
+  await ui.press({ key: 'read' })
+  expect(await ui.find({ type: 'Text', text: /Hello there friend/ })).toBeUndefined()
+  await ui.unmount()
 })

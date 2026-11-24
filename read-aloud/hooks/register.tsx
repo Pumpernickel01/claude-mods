@@ -1,10 +1,12 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
+import { lastSpoken } from './highlight'
 import { isLithuanian, speakable } from './speakable'
 
 const answer = atom({ plugin: 'read-aloud', key: 'answer' } as const, null)
 const isSpeaking = atom({ plugin: 'read-aloud', key: 'isSpeaking' } as const, false)
+const spoken = atom({ plugin: 'read-aloud', key: 'spoken' } as const, null)
 
 // The utterance under way, if any: calling `stop` ends it.
 type Voice = { stop?: () => Promise<void> }
@@ -22,12 +24,14 @@ async function toggle($: EngineInterface, voice: Voice): Promise<'started' | 'st
 
   // `say` reads standard input, so no length limit and no shell quoting.
   // shortcut: Lithuanian is read by the macOS voice Ona, which must be installed; make the voice an option when someone needs another.
-  const argv = isLithuanian(text) ? ['say', '-v', 'Ona'] : ['say']
-  const child = $.process.spawn({ argv, input: speakable(text) })
+  // --interactive makes `say` print each word as it is said; that is the highlight. It needs a TERM to paint with.
+  const argv = isLithuanian(text) ? ['say', '--interactive=red', '-v', 'Ona'] : ['say', '--interactive=red']
+  const child = $.process.spawn({ argv, env: { TERM: 'xterm' }, input: speakable(text) })
   const ended = async () => {
     if (voice.stop !== stop) return
     voice.stop = undefined
     await update($, isSpeaking, () => false)
+    await update($, spoken, () => null)
   }
   const stop = async () => {
     // Closing the stream is what kills `say`.
@@ -39,8 +43,12 @@ async function toggle($: EngineInterface, voice: Voice): Promise<'started' | 'st
 
   void (async () => {
     try {
-      for await (const _piece of child) {
-        // `say` writes nothing; the loop ends when it has finished speaking.
+      let written = ''
+      for await (const piece of child) {
+        if (piece.stream !== 'stdout') continue
+        const found = lastSpoken(written + piece.text)
+        written = found.rest
+        if (found.spoken !== null) await update($, spoken, () => found.spoken)
       }
     } catch {
       // No `say` on this machine, or it failed: the button goes back to Play.
@@ -57,6 +65,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     // A reload ends the voice but keeps the state: nothing is speaking now.
     await update($, isSpeaking, () => false)
+    await update($, spoken, () => null)
     await $.command.register({
       name: 'read',
       description: 'Reads the last answer out loud; again to stop',
@@ -87,12 +96,22 @@ export const register: Register = on => {
       return next(e)
     }
 
-    const { Box, Button } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
     const speaking = await read($, isSpeaking)
+    const line = await read($, spoken)
+    const button = <Button key="read" label={speaking ? '■ Stop reading' : '▶ Read aloud'} onPress={() => toggle($, voice)} />
 
+    if (line === null) return <Box>{button}</Box>
+
+    // The highlight lives in this band, not in the answer above it.
     return (
-      <Box>
-        <Button key="read" label={speaking ? '■ Stop reading' : '▶ Read aloud'} onPress={() => toggle($, voice)} />
+      <Box flexDirection="column">
+        {button}
+        <Text>
+          {line.before}
+          <Text inverse>{line.word}</Text>
+          {line.after}
+        </Text>
       </Box>
     )
   })
