@@ -1,7 +1,15 @@
-// The three panes of the column, by herdr pane id, and the git strip beside it when it has one
-// (columns stored before the strip existed have none and are never given one).
+// The three panes of the column, by herdr pane id, and the git strip beside it when its tab is
+// wide enough. `tab` is the
+// column's own tab in the Activity workspace; a column stored without one sits beside Claude.
 export type GitPanes = { files: string; branches: string; commits: string }
-export type Column = { flow: string; shell: string; tools: string; git?: GitPanes }
+// `server` stamps which start of the activity server made it (see `serverOf` in register.tsx).
+export type Column = { tab?: string; server?: number; flow: string; shell: string; tools: string; git?: GitPanes }
+
+// The herdr session that holds every Claude session's column, one tab each, so a second terminal
+// window attached to it (`herdr session attach activity`) shows them apart from Claude's window.
+export const SESSION = 'activity'
+// The workspace made there when it has none.
+export const WORKSPACE = 'Activity'
 
 // Rows each small pane shows, its header included; herdr spends 2 more on its frame.
 export const FLOW_ROWS = 9
@@ -46,9 +54,32 @@ export const paneIdOf = (stdout: string) => {
   return id
 }
 
-// The narrowest Claude pane the column opens beside unasked, as Claude Code
-// seats a pane it opens unasked; /activity opens it beside any.
-export const MIN_COLUMNS = 144
+// The workspace for a new tab from `herdr workspace list`'s answer: the one labelled Activity, else
+// the first (the one a window attached to the session made), if there is any.
+export const workspaceOf = (stdout: string) => {
+  type Listed = { result?: { workspaces?: { workspace_id: string; label: string }[] } }
+  const list = (JSON.parse(stdout) as Listed).result?.workspaces ?? []
+
+  return (list.find(one => one.label === WORKSPACE) ?? list[0])?.workspace_id
+}
+
+// The socket of a running herdr session from `herdr session list --json`'s answer; none when it is not running.
+export const socketOf = (stdout: string, name: string) => {
+  type Listed = { sessions?: { name: string; running: boolean; socket_path: string }[] }
+  const found = (JSON.parse(stdout) as Listed).sessions?.find(one => one.name === name)
+
+  return found?.running === true ? found.socket_path : undefined
+}
+
+// The new tab and its one pane from `herdr workspace create` or `herdr tab create`.
+export const tabOf = (stdout: string) => {
+  type Made = { result?: { tab?: { tab_id?: unknown }; root_pane?: { pane_id?: unknown } } }
+  const made = (JSON.parse(stdout) as Made).result
+  const [tab, pane] = [made?.tab?.tab_id, made?.root_pane?.pane_id]
+  if (typeof tab !== 'string' || typeof pane !== 'string') throw new Error('herdr named no new tab')
+
+  return { tab, pane }
+}
 
 // A pane's size from `herdr pane layout`'s answer.
 export const rectOf = (stdout: string, pane: string) => {

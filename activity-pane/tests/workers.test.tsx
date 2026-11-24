@@ -4,13 +4,13 @@ import { IN_HERDR, herdr, session } from './kit'
 
 const START = { cwd: '/Users/me/lab2', surface: 'terminal', isInteractive: true } as const
 
-test('opens no scout or maker tab, only the column', async ($, on) => {
+test('opens no scout or maker tab or agent, only the Activity workspace', async ($, on) => {
   const tab = herdr(on)
   session(on, IN_HERDR)
 
   await $.session.start(START)
 
-  expect(tab.ran.filter(args => args[0] === 'tab' || args[0] === 'agent')).toEqual([])
+  expect(tab.ran.filter(args => args[0] === 'agent' || (args[0] === 'tab' && args[1] === 'create'))).toEqual([])
 })
 
 test('a session left over from the removed worker feature (CLAUDE_MODS_ROLE) opens no column', async ($, on) => {

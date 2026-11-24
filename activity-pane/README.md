@@ -1,7 +1,20 @@
 # activity-pane
 
-A column beside Claude when Claude Code runs inside [herdr](https://herdr.dev):
-three panes to the right of Claude's.
+A column of panels for each Claude Code session that runs inside [herdr](https://herdr.dev).
+The panels live in a second herdr session, `activity`, one tab per Claude session named
+after its folder, so Claude's window holds only Claude: put several sessions side by side
+there and see which one waits for you. Show the panels in a second terminal window with
+`herdr session attach activity`. To open both windows with one `herdr`, add this to
+`~/.zshrc` (Terminal.app; a bare `herdr` outside herdr only, anything else passes through):
+
+```zsh
+herdr() {
+  if [[ $# -eq 0 && -z $HERDR_ENV ]]; then
+    osascript -e 'tell application "Terminal" to do script "exec herdr session attach activity"' >/dev/null
+  fi
+  command herdr "$@"
+}
+```
 
 - **Data flow** (top): one line per transfer Claude makes (model requests, web
   fetches, MCP calls, hosts shell commands reach).
@@ -43,25 +56,25 @@ three panes to the right of Claude's.
   worker waits at Claude's trust question until you answer it in its tab. The list is
   `WORKERS` in `hooks/register.tsx`. Not opened inside a worker (`CLAUDE_MODS_ROLE`).
 
-Outside herdr, or beside a Claude pane narrower than 144 columns, an Activity
-pane opens inside Claude instead; `/activity` opens the column anyway, or
-remakes what was closed of it. Leaving Claude closes the column; `/clear` keeps
-it. Design and decisions: `docs/2026-10-18-herdr-column-design.md`.
+Outside herdr, an Activity pane opens inside Claude instead. When the `activity`
+session is not running, Claude says how to start it and opens nothing; then
+`/activity` opens the column. `/activity` also remakes what was closed of it.
+Leaving Claude closes its tab; `/clear` keeps it. Claude sessions starting together
+share one workspace (a lock folder in `~/.claude/activity`). A column left beside
+Claude by an older version stays there until `/activity` moves it (its Shell pane
+closes then). Design and decisions: `docs/2026-10-18-herdr-column-design.md`.
 
 ## Git strip
 
-On a window wide enough (the right half at least 120 columns, 52 for the strip and 68
-for the column; a 245-column window gives 122), a strip of three panes opens between
-Claude and the column: **Files** (branch, ahead/behind, counts, every changed path),
+On a tab wide enough (at least 120 columns, 52 for the strip and 68 for the column),
+a strip of three panes opens left of the column: **Files** (branch, ahead/behind, counts, every changed path),
 **Branches** (local branches, newest first, ahead/behind or gone) and **Commits** (the
-graph, unpushed shas red, refs, age), about 40 / 20 / 40 % of the height. Claude's pane
-keeps its size: the first split is the same as without the strip. Read-only: up/down,
+graph, unpushed shas red, refs, age), about 40 / 20 / 40 % of the height. Read-only: up/down,
 j/k, PgUp/PgDn, the wheel and a click move the selection, `q` closes a pane (`/activity`
 makes it again). The viewers poll git themselves (`viewer/gitdata.mjs`, no feed file):
 Files every 2 s, Branches and Commits when `.git/HEAD`, `refs`, `packed-refs` or
 `logs/HEAD` change, always `git --no-optional-locks` with an argument array, never a
-shell, so they never take `index.lock`. A column stored before the strip existed is
-never given one.
+shell, so they never take `index.lock`.
 
 ## Install
 

@@ -8,7 +8,6 @@ import {
   FLOW_ROWS,
   GIT_COLS,
   GIT_RATIOS,
-  MIN_COLUMNS,
   STRIP_MIN,
   TOOLS_ROWS,
   feedDirOf,
@@ -21,7 +20,12 @@ import {
   ratioText,
   ratiosOf,
   shellCommand,
+  socketOf,
+  tabOf,
   viewerCommand,
+  workspaceOf,
+  SESSION,
+  WORKSPACE,
 } from './herdr'
 import type { Column, GitPanes } from './herdr'
 
@@ -68,7 +72,10 @@ const detailOf = (e: object): string => {
 const took = (ms: number) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`)
 
 // The herdr pane Claude runs in, and where the column beside it is fed from.
-type Herdr = { bin: string; pane: string; root: string; feed: string }
+// `session` is the herdr session the column lives in; none means Claude's own (the old column beside it).
+type Herdr = { bin: string; pane: string; root: string; feed: string; session?: string }
+
+const inMain = (herdr: Herdr): Herdr => ({ ...herdr, session: undefined })
 
 // What this module keeps between hooks: the column's herdr, the model API's
 // name, and the feed write under way, if any.
@@ -100,7 +107,7 @@ async function herdrOf($: EngineInterface, root: string): Promise<Herdr | undefi
   ])
   if (isHerdr !== '1' || pane === undefined || pane === '' || !home) return undefined
 
-  return { bin: bin || 'herdr', pane, root, feed: feedPathOf(home, pane) }
+  return { bin: bin || 'herdr', pane, root, feed: feedPathOf(home, pane), session: SESSION }
 }
 
 // The feed's folder, readable by this user alone, before anything is written to it.
@@ -110,7 +117,8 @@ async function privateDir($: EngineInterface, herdr: Herdr) {
 }
 
 async function herdrRun($: EngineInterface, herdr: Herdr, args: string[]) {
-  const ran = await $.process.run([herdr.bin, ...args], { timeoutMs: 5_000 })
+  const at = herdr.session === undefined ? [] : ['--session', herdr.session]
+  const ran = await $.process.run([herdr.bin, ...at, ...args], { timeoutMs: 5_000 })
   if (ran.exitCode !== 0) {
     throw new Error(`herdr ${args.slice(0, 2).join(' ')}: ${ran.stderr.trim() || `exit ${ran.exitCode}`}`)
   }
@@ -152,30 +160,72 @@ async function startGit($: EngineInterface, herdr: Herdr, pane: string, key: key
 
 const columnKey = (herdr: Herdr) => `column:${herdr.pane}`
 
-// Splits Claude's pane right (its own size never changes), then, when the right half is wide
-// enough, that pane right again for the column, leaving it the git strip's Files; the column's
-// pane down twice (data flow, shell, tools) and the strip's down twice (Files, Branches, Commits).
-async function build($: EngineInterface, herdr: Herdr, withGit: boolean): Promise<Column> {
-  const made: string[] = []
+const folderOf = (root: string) => root.split('/').filter(Boolean).pop() ?? 'Claude'
+
+// A tab for this session in the activity session's workspace, named after its folder. When the
+// session has no workspace, the one made for it brings the first tab. Only that new workspace takes
+// focus, so the window shows it; later tabs leave the window on the tab it shows.
+async function newTab($: EngineInterface, herdr: Herdr) {
+  const label = folderOf(herdr.root)
+  const found = await locked($, herdr, async () => {
+    const there = workspaceOf(await herdrRun($, herdr, ['workspace', 'list']))
+
+    return there ?? tabOf(await herdrRun($, herdr, ['workspace', 'create', '--label', WORKSPACE, '--cwd', herdr.root, '--focus']))
+  })
+  if (typeof found === 'string') {
+    return tabOf(await herdrRun($, herdr, ['tab', 'create', '--workspace', found, '--label', label, '--cwd', herdr.root, '--no-focus']))
+  }
+
+  await herdrRun($, herdr, ['tab', 'rename', found.tab, label]).catch(async error => {
+    await closeTab($, herdr, found.tab)
+    throw error
+  })
+
+  return found
+}
+
+// Runs `work` holding a lock folder, so Claude sessions starting together (a hot reload starts
+// them all) make one workspace between them. A lock older than its 5 s wait is taken over.
+async function locked<T>($: EngineInterface, herdr: Herdr, work: () => Promise<T>) {
+  const lock = `${feedDirOf(herdr.feed)}/workspace.lock`
+  const take = async () => (await $.process.run(['mkdir', lock], { timeoutMs: 2_000 })).exitCode === 0
+  let isHeld = false
+  for (let tries = 0; tries < 25 && !isHeld; tries += 1) {
+    isHeld = await take()
+    if (!isHeld) await $.clock.sleep(200)
+  }
+  // left by a session that died holding it: take it over
+  if (!isHeld) {
+    await $.process.run(['rmdir', lock], { timeoutMs: 2_000 })
+    await take()
+  }
   try {
-    const ratios = ratiosOf(await heightIn($, herdr, herdr.pane))
-    const right = await split($, herdr, herdr.pane, 'right', 0.5)
-    made.push(right)
-    const wide = withGit ? (await sizeOf($, herdr, right)).width : 0
-    const hasStrip = wide >= STRIP_MIN
-    const flow = hasStrip ? await split($, herdr, right, 'right', ratioKeepingWide(wide, GIT_COLS)) : right
-    if (hasStrip) made.push(flow)
+    return await work()
+  } finally {
+    await $.process.run(['rmdir', lock], { timeoutMs: 2_000 }).catch(() => undefined)
+  }
+}
+
+const closeTab = ($: EngineInterface, herdr: Herdr, tab: string) =>
+  herdrRun($, herdr, ['tab', 'close', tab]).then(() => undefined, () => undefined)
+
+// Makes a tab in the Activity workspace; when it is wide enough, splits its pane right for the
+// column, leaving it the git strip's Files; the column's pane down twice (data flow, shell, tools)
+// and the strip's down twice (Files, Branches, Commits). A failure closes the whole tab.
+async function build($: EngineInterface, herdr: Herdr): Promise<Column> {
+  const { tab, pane: root } = await newTab($, herdr)
+  try {
+    const { width, height } = await sizeOf($, herdr, root)
+    const ratios = ratiosOf(height)
+    const hasStrip = width >= STRIP_MIN
+    const flow = hasStrip ? await split($, herdr, root, 'right', ratioKeepingWide(width, GIT_COLS)) : root
     const shell = await split($, herdr, flow, 'down', ratios.flow)
-    made.push(shell)
     const tools = await split($, herdr, shell, 'down', ratios.tools)
-    made.push(tools)
     let git: GitPanes | undefined
     if (hasStrip) {
-      const branches = await split($, herdr, right, 'down', GIT_RATIOS.files)
-      made.push(branches)
+      const branches = await split($, herdr, root, 'down', GIT_RATIOS.files)
       const commits = await split($, herdr, branches, 'down', GIT_RATIOS.branches)
-      made.push(commits)
-      git = { files: right, branches, commits }
+      git = { files: root, branches, commits }
     }
 
     await herdrRun($, herdr, ['pane', 'rename', shell, 'Shell'])
@@ -186,12 +236,27 @@ async function build($: EngineInterface, herdr: Herdr, withGit: boolean): Promis
       ...(git === undefined ? [] : GIT_KEYS.map(key => startGit($, herdr, git[key], key))),
     ])
 
-    return git === undefined ? { flow, shell, tools } : { flow, shell, tools, git }
+    return git === undefined ? { tab, flow, shell, tools } : { tab, flow, shell, tools, git }
   } catch (error) {
-    await Promise.all(made.map(pane => close($, herdr, pane)))
+    await closeTab($, herdr, tab)
     throw error
   }
 }
+
+// When the activity server started: its socket's mtime, set when it binds and never after. A tab
+// column stamped by another start belongs to a server that is gone, and its ids may name other panes now.
+async function serverOf($: EngineInterface, herdr: Herdr) {
+  const socket = socketOf(await herdrRun($, inMain(herdr), ['session', 'list', '--json']), herdr.session ?? '')
+  if (socket === undefined) throw new Error(`server_not_running: herdr session ${herdr.session ?? ''}`)
+
+  return (await $.fs.stat(socket)).mtimeMs
+}
+
+// Closes a column: its tab, or the panes of one left beside Claude, in Claude's session, by the old mod.
+const closeColumn = ($: EngineInterface, herdr: Herdr, column: Column) =>
+  column.tab !== undefined
+    ? closeTab($, herdr, column.tab)
+    : Promise.all([column.flow, column.shell, column.tools, ...Object.values(column.git ?? {})].map(pane => close($, inMain(herdr), pane)))
 
 // Makes again the git panes that are gone while some are left; all gone, they were closed on
 // purpose and stay so. Each is split down from a neighbour that is there (Files, which sits
@@ -214,17 +279,29 @@ async function repairGit($: EngineInterface, herdr: Herdr, git: GitPanes) {
   return now
 }
 
-// Opens the column beside Claude, or makes again what is gone of it. A shell
-// still there is kept whatever else is missing: it may be running something.
-async function openColumn($: EngineInterface, herdr: Herdr) {
+// Opens the column in the Activity workspace, or makes again what is gone of it. A shell
+// still there is kept whatever else is missing: it may be running something. A column the old
+// mod left beside Claude stays until /activity moves it (its shell is closed then).
+async function openColumn($: EngineInterface, herdr: Herdr, isAsked: boolean) {
   const known = (await $.store.get(columnKey(herdr))) as Column | undefined
+  const isBeside = known !== undefined && known.tab === undefined
   const [hasFlow, hasShell, hasTools] =
     known === undefined
       ? [false, false, false]
-      : await Promise.all([known.flow, known.shell, known.tools].map(pane => isAlive($, herdr, pane)))
+      : await Promise.all([known.flow, known.shell, known.tools].map(pane => isAlive($, isBeside ? inMain(herdr) : herdr, pane)))
+  // an old column with nothing left of it is replaced at once
+  if (isBeside && !isAsked && (hasFlow || hasShell || hasTools)) return known
+  const server = await serverOf($, herdr)
+  // a column from an earlier activity server went with it: nothing of it to keep or close
+  // (one made before stamps existed counts as this server's: it is stamped below)
+  if (known?.tab !== undefined && known.server !== undefined && known.server !== server) {
+    await $.store.delete(columnKey(herdr))
+
+    return openColumn($, herdr, isAsked)
+  }
 
   let column: Column
-  if (known !== undefined && hasShell) {
+  if (known !== undefined && hasShell && !isBeside) {
     column = { ...known }
     if (!hasTools) {
       column.tools = await split($, herdr, column.shell, 'down', ratioLeaving(await heightIn($, herdr, column.shell), TOOLS_ROWS))
@@ -239,14 +316,12 @@ async function openColumn($: EngineInterface, herdr: Herdr) {
     }
     if (known.git !== undefined) column.git = await repairGit($, herdr, known.git)
   } else {
-    if (known !== undefined) {
-      const gone = Object.values(known.git ?? {})
-      await Promise.all([hasFlow && close($, herdr, known.flow), hasTools && close($, herdr, known.tools), ...gone.map(pane => close($, herdr, pane))])
-    }
-    // an old-shape column that has to be rebuilt stays an old-shape column
-    column = await build($, herdr, known === undefined || known.git !== undefined)
+    // built before the old one closes, so a failure leaves the old one there
+    column = await build($, herdr)
+    if (known !== undefined) await closeColumn($, herdr, known)
   }
 
+  column.server = server
   await $.store.set(columnKey(herdr), column)
 
   return column
@@ -311,8 +386,7 @@ const aside = (work: () => Promise<unknown>) => {
     .catch(() => undefined)
 }
 
-// The column beside Claude in herdr; elsewhere, or when herdr refuses, the pane
-// inside Claude. Unasked, a Claude pane too narrow to share keeps the pane inside.
+// The column in herdr's Activity workspace; elsewhere, or when herdr refuses, the pane inside Claude.
 async function openHere($: EngineInterface, live: Live, isAsked: boolean) {
   const herdr = live.herdr
   if (herdr === undefined) {
@@ -322,20 +396,18 @@ async function openHere($: EngineInterface, live: Live, isAsked: boolean) {
   }
 
   try {
-    const hasColumn = (await $.store.get(columnKey(herdr))) !== undefined
-    if (!isAsked && !hasColumn && (await sizeOf($, herdr, herdr.pane)).width < MIN_COLUMNS) {
-      await $.ui.open({ id: PANE, title: TITLE })
-
-      return { text: 'Activity pane opened; /activity opens the column beside Claude.' }
-    }
-
-    await openColumn($, herdr)
+    await openColumn($, herdr, isAsked)
     feed($, live)
 
-    return { text: 'Activity column open beside Claude.' }
+    return { text: `Activity panels open in the herdr session "${SESSION}".` }
   } catch (error) {
-    await $.ui.open({ id: PANE, title: TITLE })
     const why = error instanceof Error ? error.message : String(error)
+    // the Activity window is closed: say how to open it, and keep Claude's pane whole
+    if (why.includes('server_not_running')) {
+      return { text: `The Activity window is not open: run \`herdr session attach ${SESSION}\` in a second terminal window, then /activity.`, isFallback: true }
+    }
+
+    await $.ui.open({ id: PANE, title: TITLE })
 
     return { text: `The herdr column could not be opened (${why}); the Activity pane is open instead.`, isFallback: true }
   }
@@ -347,7 +419,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'activity',
-      description: 'Open the activity column beside Claude in herdr, or the Activity pane elsewhere',
+      description: 'Open the activity panels in the herdr session "activity" (a second window), or the Activity pane elsewhere',
     })
     // Kept for scout/maker tabs the removed worker feature left running (CLAUDE_MODS_ROLE is
     // set in them): a hot reload re-runs this hook there, and they must not grow columns.
@@ -370,8 +442,10 @@ export const register: Register = on => {
     const herdr = live.herdr
     if (herdr !== undefined && EXITS.has(e.reason)) {
       const known = (await $.store.get(columnKey(herdr))) as Column | undefined
+      // a tab is closed only on the server that made it; another start has reused its ids
+      const isOurs = known?.tab === undefined || known.server === undefined || (await serverOf($, herdr).catch(() => undefined)) === known.server
       if (known !== undefined) {
-        await Promise.all([known.flow, known.shell, known.tools, ...Object.values(known.git ?? {})].map(pane => close($, herdr, pane)))
+        if (isOurs) await closeColumn($, herdr, known)
         await $.store.delete(columnKey(herdr))
       }
     }
