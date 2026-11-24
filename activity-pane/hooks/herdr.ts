@@ -1,5 +1,5 @@
-// The three panes of the column, by herdr pane id, and the git strip beside it when its tab is
-// wide enough. `tab` is the
+// The three panes of the column, by herdr pane id, and the git strip beside it (columns made by
+// older versions may have none). `tab` is the
 // column's own tab in the Activity workspace; a column stored without one sits beside Claude.
 export type GitPanes = { files: string; branches: string; commits: string }
 // `server` stamps which start of the activity server made it (see `serverOf` in register.tsx).
@@ -32,17 +32,15 @@ export const ratioLeaving = (height: number, rows: number) => clamp((height - ro
 // The ratio that keeps `rows` in the split pane itself.
 export const ratioKeeping = (height: number, rows: number) => clamp((rows + FRAME) / height)
 
-// The git strip is this many columns wide and opens only when the column keeps COLUMN_MIN beside it.
-export const GIT_COLS = 52
-export const COLUMN_MIN = 68
-export const STRIP_MIN = GIT_COLS + COLUMN_MIN
+// The git strip's share of the tab's width, the column the rest. A share, not a count of columns
+// with a minimum: the tab is built at whatever size the second window has then (or none), so a
+// minimum once left the strip out.
+export const GIT_SHARE = 0.4
 
 // The share of the strip's height each pane keeps when split down in turn: Files 40 %, Branches 20 %,
 // Commits 40 % (Branches keeps 20 of the 60 left below Files).
 export const GIT_RATIOS = { files: 0.4, branches: 0.2 / 0.6 }
 
-// The ratio that keeps `columns` in the split pane itself, for a split to the right.
-export const ratioKeepingWide = (width: number, columns: number) => clamp(columns / width)
 
 export const ratioText = (ratio: number) => ratio.toFixed(4)
 

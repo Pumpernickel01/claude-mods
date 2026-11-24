@@ -1,6 +1,6 @@
 // What the git viewers draw, as plain functions of the parsed feed, the view and the pane's
 // size, like draw.mjs's. Read-only: the view is only which row is selected.
-import { MOCHA, cellsOf, clean, fit, headerOf, onSelected, paint } from './draw.mjs'
+import { THEME, cellsOf, clean, fit, headerOf, onSelected, paint } from './draw.mjs'
 import { shortAge } from './gitdata.mjs'
 
 // Text from git on one line, no control character in it.
@@ -48,7 +48,7 @@ const listOf = (title, total, rows, view, lineOf, cols) => {
   return lines
 }
 
-const MARK_COLOR = { ' ': MOCHA.text, '?': MOCHA.red }
+const MARK_COLOR = { ' ': THEME.text, '?': THEME.red }
 
 // One changed path: "M  src/app.mjs", the index's letter green, the worktree's red, the folder dim.
 export const fileLineOf = (entry, cols) => {
@@ -59,11 +59,11 @@ export const fileLineOf = (entry, cols) => {
   const dirCells = path.lastIndexOf('/') + 1
 
   return [
-    paint(entry.x === '?' ? MOCHA.red : MOCHA.green, x),
-    paint(MARK_COLOR[entry.y] ?? MOCHA.red, y),
+    paint(entry.x === '?' ? THEME.red : THEME.green, x),
+    paint(MARK_COLOR[entry.y] ?? THEME.red, y),
     ' ',
-    paint(MOCHA.overlay1, text.slice(0, dirCells)),
-    paint(MOCHA.text, text.slice(dirCells)),
+    paint(THEME.overlay1, text.slice(0, dirCells)),
+    paint(THEME.text, text.slice(dirCells)),
   ].join('')
 }
 
@@ -83,17 +83,17 @@ export const drawFiles = (feed, view, rows, cols) => {
   const rest = [upstream === undefined ? '' : `↑${ahead} ↓${behind}`, counts.length === 0 ? 'clean' : counts.join(' · ')]
   const name = fit(one(head), Math.min(cols, cellsOf(one(head))))
   const left = rest[0] === '' ? rest[1] : `${rest[0]} · ${rest[1]}`
-  const header = paint(MOCHA.blue, name) + paint(MOCHA.overlay1, fit(` ${left}`, cols - cellsOf(name)))
+  const header = paint(THEME.blue, name) + paint(THEME.overlay1, fit(` ${left}`, cols - cellsOf(name)))
 
   return [header, ...listOf('', entries.length, rows, view, row => fileLineOf(entries[row], cols), cols).slice(1)]
 }
 
 const statusOf = branch => {
-  if (branch.isGone) return ['gone', MOCHA.red]
-  if (!branch.hasUpstream) return ['·', MOCHA.overlay0]
-  if (branch.ahead === 0 && branch.behind === 0) return ['✓', MOCHA.green]
+  if (branch.isGone) return ['gone', THEME.red]
+  if (!branch.hasUpstream) return ['·', THEME.overlay0]
+  if (branch.ahead === 0 && branch.behind === 0) return ['✓', THEME.green]
 
-  return [[branch.ahead > 0 && `↑${branch.ahead}`, branch.behind > 0 && `↓${branch.behind}`].filter(Boolean).join(' '), MOCHA.peach]
+  return [[branch.ahead > 0 && `↑${branch.ahead}`, branch.behind > 0 && `↓${branch.behind}`].filter(Boolean).join(' '), THEME.peach]
 }
 
 // The Branches pane: "* dev  ↑1 ↓0  3d", the current branch teal.
@@ -107,22 +107,22 @@ export const drawBranches = (feed, view, rows, cols) => {
   const lineOf = row => {
     const branch = list[row]
     const [status, color] = statusOf(branch)
-    const tint = branch.isCurrent ? MOCHA.teal : MOCHA.text
+    const tint = branch.isCurrent ? THEME.teal : THEME.text
 
     return [
-      paint(MOCHA.teal, branch.isCurrent ? '* ' : '  '),
+      paint(THEME.teal, branch.isCurrent ? '* ' : '  '),
       paint(tint, fit(one(branch.name), nameCells)),
       ' ',
       paint(color, fit(status, statusCells)),
       ' ',
-      paint(MOCHA.overlay1, shortAge(branch.age).padStart(4)),
+      paint(THEME.overlay1, shortAge(branch.age).padStart(4)),
     ].join('')
   }
 
   return listOf(list.length === 0 ? 'Branches · none' : `Branches · ${list.length}`, list.length, rows, view, lineOf, cols)
 }
 
-const REF_COLOR = ref => (ref.startsWith('HEAD') ? MOCHA.teal : ref.startsWith('tag: ') ? MOCHA.yellow : MOCHA.green)
+const REF_COLOR = ref => (ref.startsWith('HEAD') ? THEME.teal : ref.startsWith('tag: ') ? THEME.yellow : THEME.green)
 
 // "[HEAD -> dev, origin/dev]" within `budget` cells, refs dropped from the end when it is too long.
 // shortcut: a ref with a slash counts as a remote (so a local feature/x is green too); no flag in %D.
@@ -139,10 +139,10 @@ const refsOf = (refs, budget) => {
   if (kept.length === 0) return { cells: 0, text: '' }
 
   const text = kept
-    .map((ref, at) => (at > 0 ? paint(MOCHA.overlay0, ', ') : '') + paint(REF_COLOR(ref), one(ref)))
+    .map((ref, at) => (at > 0 ? paint(THEME.overlay0, ', ') : '') + paint(REF_COLOR(ref), one(ref)))
     .join('')
 
-  return { cells: used, text: paint(MOCHA.overlay0, '[') + text + paint(MOCHA.overlay0, ']') }
+  return { cells: used, text: paint(THEME.overlay0, '[') + text + paint(THEME.overlay0, ']') }
 }
 
 // The Commits pane: "* 1a2b3c4 [HEAD -> dev] subject  3d", unpushed shas red.
@@ -155,7 +155,7 @@ export const drawCommits = (feed, view, rows, cols) => {
   const lineOf = row => {
     const commit = list[row]
     const graph = one(commit.graph).slice(0, Math.floor(cols / 3))
-    if (commit.sha === undefined) return paint(MOCHA.overlay0, fit(graph, cols))
+    if (commit.sha === undefined) return paint(THEME.overlay0, fit(graph, cols))
 
     const room = Math.max(0, cols - cellsOf(graph) - 7 - 1 - 5)
     const refs = refsOf(commit.refs, Math.floor(room / 2))
@@ -163,14 +163,14 @@ export const drawCommits = (feed, view, rows, cols) => {
     const isUnpushed = unpushed !== undefined && unpushed.has(commit.sha)
 
     return [
-      paint(MOCHA.overlay0, graph),
-      paint(isUnpushed ? MOCHA.red : MOCHA.yellow, commit.sha.slice(0, 7)),
+      paint(THEME.overlay0, graph),
+      paint(isUnpushed ? THEME.red : THEME.yellow, commit.sha.slice(0, 7)),
       ' ',
       refs.text,
       ' '.repeat(spacer),
-      paint(MOCHA.text, fit(one(commit.subject), room - refs.cells - spacer)),
+      paint(THEME.text, fit(one(commit.subject), room - refs.cells - spacer)),
       ' ',
-      paint(MOCHA.overlay1, shortAge(commit.age).padStart(4)),
+      paint(THEME.overlay1, shortAge(commit.age).padStart(4)),
     ].join('')
   }
   const pending = unpushed === undefined || unpushed.size === 0 ? '' : ` · ${unpushed.size} unpushed`
