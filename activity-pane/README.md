@@ -19,10 +19,14 @@ three panes to the right of Claude's.
   each with what it does, read from the frontmatter of the subagent files in
   `~/.claude/agents` and the project's `.claude/agents` (not plugin agents,
   there are too many to be a reminder) → **Keepsake**, your own memo on how to
-  ask, `~/.claude/keepsake.md` → Shell; both memos are read at each redraw, so
-  an edit shows at once. Shift+Tab is the only switch key, forward only (it
-  loops back to the shell), Esc or q returns to the shell. The pane's title
-  lists every view, the shown one in brackets, so the shell shows what else is there. Arrows, PgUp/PgDn and the mouse wheel scroll a view taller than the
+  ask, `~/.claude/keepsake.md` → **Keys**, this pane's keys and herdr's (its
+  defaults from `herdr --default-config` with `~/.config/herdr/config.toml` over
+  them, plus your own `[[keys.command]]` entries) → Shell; both memos are read at
+  each redraw, so an edit shows at once. From the shell, Shift+Tab opens Agents.
+  In a view, 1–6 jump straight to a view (1 is the shell), Left and Right go back
+  and forward, Shift+Tab goes forward, Esc or q returns to the shell. The pane's
+  title lists every view with its number, the shown one in brackets, so the shell
+  shows what else is there. Up/Down, PgUp/PgDn and the mouse wheel scroll a view taller than the
   pane; when the graph has more agents than fit, finished sibling agents fold
   into one node (`◌ ✗ 5 failed`). `c` clears
   finished agents from both views until the pane restarts. The agent data comes

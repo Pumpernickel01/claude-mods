@@ -107,10 +107,12 @@ class Views(Files):
         self.assertTrue(all(len(line) <= 80 for line in lines))
 
     def test_header_lists_all_views_with_the_shown_one_in_brackets(self):
-        self.assertEqual(shell_tabs.header("graph"), "Shell · Agents · [Agent graph] · Roster · Keepsake · Shift+Tab next")
+        self.assertEqual(shell_tabs.header("graph"),
+                         "1 Shell · 2 Agents · [3 Agent graph] · 4 Roster · 5 Keepsake · 6 Keys · Shift+Tab next")
 
-    def test_tab_strip_names_all_five_views(self):
-        self.assertTrue(plain([shell_tabs.tab_strip("graph", 100)])[0].startswith(" Shell  Agents  Agent graph  Roster  Keepsake "))
+    def test_tab_strip_numbers_all_six_views(self):
+        self.assertTrue(plain([shell_tabs.tab_strip("graph", 140)])[0].startswith(
+            " 1 Shell  2 Agents  3 Agent graph  4 Roster  5 Keepsake  6 Keys "))
 
     def test_a_new_session_in_the_feed_starts_over(self):
         agents = self.agents()
@@ -417,6 +419,107 @@ class Live(Files):
         self.assertTrue(all(src.id != "par_6666" and getattr(dst, "id", "") != "par_6666" for _, _, src, dst in S.comms))
 
 
+HERDR_DEFAULT = """[theme]
+# name = "catppuccin"
+
+[keys]
+# Prefix key to enter prefix mode (default: "ctrl+b")
+# prefix = "ctrl+b"
+# help = "prefix+?"
+# open_worktree = ""    # optional, unset by default
+# split_horizontal = "prefix+minus"
+# focus_pane_left = "prefix+h"
+# cycle_pane_previous = "prefix+shift+tab"
+# switch_tab = "prefix+1..9"
+# zoom = "prefix+z"       # legacy alias: fullscreen
+# navigate_pane_left = "h"      # left arrow always focuses the pane to the left
+# type = "popup" opens a session-modal terminal without changing the tab layout.
+# [[keys.command]]
+# key = "prefix+alt+g"
+# command = "lazygit"
+# [keys.indexed]
+# tabs = "ctrl"
+
+[server]
+# headless_cols = 120
+"""
+
+
+class Keys(unittest.TestCase):
+    """The Keys view: herdr's default bindings, the user's config over them, and this pane's own keys."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.user = os.path.join(self.dir.name, "config.toml")
+        with open(self.user, "w") as f:
+            f.write('onboarding = false\n[keys]\nprefix = "ctrl+a"\nzoom = "prefix+f"\n'
+                    '[[keys.command]]\nkey = "prefix+alt+g"\ntype = "popup"\ncommand = "lazygit"\n')
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_defaults_read_from_the_keys_section_the_users_config_winning(self):
+        prefix, binds, commands = shell_tabs.herdr_keys(HERDR_DEFAULT, self.user)
+        self.assertEqual(prefix, "ctrl+a")
+        self.assertEqual(binds["zoom"], "prefix+f")
+        self.assertEqual(binds["focus_pane_left"], "prefix+h")
+        self.assertNotIn("name", binds)  # another section
+        self.assertNotIn("key", binds)  # a commented example table, not a binding
+        self.assertNotIn("tabs", binds)
+        self.assertNotIn("type", binds)  # prose in a comment, not a binding
+        self.assertNotIn("headless_cols", binds)
+        self.assertEqual(commands, [("prefix+alt+g", "lazygit")])
+
+    def test_a_broken_or_missing_user_config_keeps_the_defaults(self):
+        with open(self.user, "w") as f:
+            f.write("[keys\n")
+        self.assertEqual(shell_tabs.herdr_keys(HERDR_DEFAULT, self.user)[0], "ctrl+b")
+        self.assertEqual(shell_tabs.herdr_keys(HERDR_DEFAULT, self.user + ".gone")[0], "ctrl+b")
+
+    def test_odd_user_configs_never_crash_the_view(self):
+        for text in ('keys = "x"\n', '[keys]\ncommand = "lazygit"\n', '[[keys.command]]\nkey = 5\ncommand = "x"\n',
+                     '[keys]\ncommand = ["a"]\n', '[keys]\nzoom = 5\n'):
+            with open(self.user, "w") as f:
+                f.write(text)
+            lines = plain(shell_tabs.draw_keys(60, 70, {}, HERDR_DEFAULT, self.user))
+            self.assertIn("Ctrl+b h  focus pane left", "\n".join(lines), text)
+            self.assertNotIn("lazygit", "\n".join(lines), text)
+        with open(self.user, "wb") as f:
+            f.write(b"[keys]\nzoom = \"\xff\"\n")
+        self.assertIn("Ctrl+b z  zoom", "\n".join(plain(shell_tabs.draw_keys(60, 70, {}, HERDR_DEFAULT, self.user))))
+
+    def test_without_herdr_the_note_shows_even_with_user_bindings(self):
+        text = "\n".join(plain(shell_tabs.draw_keys(30, 70, {}, "", self.user)))
+        self.assertIn("herdr --default-config", text)
+        self.assertIn("Ctrl+a f  zoom", text)
+
+    def test_a_narrow_strip_keeps_the_shown_view_whole(self):
+        self.assertEqual(plain([shell_tabs.tab_strip("keys", 40)])[0], " 1  2  3  4  5  6 Keys ")
+
+    def test_chords_read_as_keys_one_presses(self):
+        chord = shell_tabs.chord
+        self.assertEqual(chord("prefix+h", "ctrl+a"), "Ctrl+a h")
+        self.assertEqual(chord("prefix+minus", "ctrl+b"), "Ctrl+b -")
+        self.assertEqual(chord("prefix+shift+tab", "ctrl+b"), "Ctrl+b Shift+Tab")
+        self.assertEqual(chord("prefix+1..9", "ctrl+b"), "Ctrl+b 1..9")
+        self.assertEqual(chord("ctrl+alt+left", "ctrl+b"), "Ctrl+Alt+←")
+
+    def test_the_view_lists_this_panes_keys_herdrs_and_the_users_commands_within_the_width(self):
+        lines = plain(shell_tabs.draw_keys(60, 70, {}, HERDR_DEFAULT, self.user))
+        text = "\n".join(lines)
+        self.assertEqual(len(lines), 60)
+        self.assertTrue(all(len(line) <= 70 for line in lines))
+        for want in ("This pane", "1–6", "Shift+Tab", "Ctrl+a h", "focus pane left", "Ctrl+a f", "zoom",
+                     "Ctrl+a -", "split horizontal", "Navigate mode", "h  navigate pane left", "Ctrl+a Alt+g", "lazygit"):
+            self.assertIn(want, text)
+        self.assertNotIn("open worktree", text)  # unset: nothing to press
+
+    def test_without_herdr_only_this_panes_keys_show(self):
+        text = "\n".join(plain(shell_tabs.draw_keys(30, 70, {}, "", self.user + ".gone")))
+        self.assertIn("This pane", text)
+        self.assertIn("herdr --default-config", text)
+
+
 class Wrapper(Files):
     """shell_tabs.py around /bin/sh in a real pty, driven by keys."""
 
@@ -436,7 +539,7 @@ class Wrapper(Files):
                     return seen
         self.fail(f"never saw {pattern!r}; got {seen[-400:]!r}")
 
-    def test_shift_tab_cycles_shell_agents_graph_roster_keepsake_and_c_clears_finished(self):
+    def test_shift_tab_cycles_shell_agents_graph_roster_keepsake_keys_and_c_clears_finished(self):
         env = {**os.environ, "SHELL": "/bin/sh", "CLAUDE_MODS_EVENT_LOG": self.log, "PS1": "$ ", "HOME": self.dir.name}
         env.pop("HERDR_PANE_ID", None)
         os.makedirs(os.path.join(self.dir.name, ".claude", "agents"))
@@ -468,6 +571,8 @@ class Wrapper(Files):
             os.write(fd, shell_tabs.SHIFT_TAB)
             self.read_until(fd, rb"Remember this")
             os.write(fd, shell_tabs.SHIFT_TAB)
+            self.read_until(fd, rb"This pane")
+            os.write(fd, shell_tabs.SHIFT_TAB)
             out = self.read_until(fd, rb"\x1b\[\?1049l")
             os.write(fd, b"echo af''ter\r")
             out += self.read_until(fd, rb"after")
@@ -489,6 +594,40 @@ class Wrapper(Files):
             os.write(fd, b"exit 3\r")
             _, status = os.waitpid(pid, 0)
             self.assertEqual(os.waitstatus_to_exitcode(status), 3)
+        finally:
+            try:
+                os.kill(pid, 9)
+            except OSError:
+                pass
+            os.close(fd)
+
+
+    def test_number_keys_and_left_right_jump_between_views(self):
+        env = {**os.environ, "SHELL": "/bin/sh", "CLAUDE_MODS_EVENT_LOG": self.log, "PS1": "$ ", "HOME": self.dir.name,
+               "HERDR_BIN_PATH": os.path.join(self.dir.name, "no-herdr")}
+        env.pop("HERDR_PANE_ID", None)
+        pid, fd = pty.fork()
+        if pid == 0:
+            os.execvpe(sys.executable, [sys.executable, os.path.join(HERE, "shell_tabs.py"), self.feed], env)
+        try:
+            self.read_until(fd, rb"\$ ")
+            os.write(fd, shell_tabs.SHIFT_TAB)
+            self.read_until(fd, rb"\x1b\[\?1049h")
+            os.write(fd, b"6")
+            self.read_until(fd, rb"This pane")
+            os.write(fd, b"\x1b[D")  # Left: back to Keepsake
+            self.read_until(fd, rb"No keepsake yet")
+            os.write(fd, b"\x1b[C")  # Right: Keys again
+            self.read_until(fd, rb"This pane")
+            os.write(fd, b"\x1bOD\x1bOD\x1bOD")  # Left three times, as an app-mode terminal sends it
+            self.read_until(fd, rb"\xe2\x97\x8f main")
+            os.write(fd, b"1")
+            self.read_until(fd, rb"\x1b\[\?1049l")
+            os.write(fd, b"echo af''ter\r")
+            self.read_until(fd, rb"after")
+            os.write(fd, b"exit 4\r")
+            _, status = os.waitpid(pid, 0)
+            self.assertEqual(os.waitstatus_to_exitcode(status), 4)
         finally:
             try:
                 os.kill(pid, 9)

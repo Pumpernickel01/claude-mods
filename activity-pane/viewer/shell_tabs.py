@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""The column's Shell pane, with two views of Claude's agents and two memos.
+"""The column's Shell pane, with two views of Claude's agents, two memos and herdr's keys.
 
     python3 shell_tabs.py <feed file>
 
 The shell runs in a pty and passes straight through. Shift+Tab cycles Shell ->
-Agents -> Agent graph -> Roster -> Keepsake -> Shell, Esc or q returns to the
-shell; Tab stays with the shell, for its completion.
+Agents -> Agent graph -> Roster -> Keepsake -> Keys -> Shell; in a view, 1-6 jump
+straight to a view (1 is the shell), Left and Right go back and forward, Esc or q
+returns to the shell; Tab stays with the shell, for its completion.
 Arrows, PgUp/PgDn and the mouse wheel scroll a view taller than the pane; c
 clears finished agents. A view draws on the alternate screen, so the shell's own
 screen comes back as it was; what the shell printed meanwhile is held and written
@@ -30,7 +31,9 @@ the feed names, or the latest in the log while it names none.
 Roster lists the subagents one may call as @agent-<name>, each with what it does,
 from the frontmatter of the files in ~/.claude/agents and the project's
 .claude/agents; Keepsake shows ~/.claude/keepsake.md, one's own memo on how to
-ask. Both are read at each redraw, so an edit shows at once. Stdlib only.
+ask. Both are read at each redraw, so an edit shows at once. Keys lists this
+pane's keys and herdr's: its defaults (herdr --default-config, read once) with
+~/.config/herdr/config.toml over them, and the user's own commands. Stdlib only.
 """
 import fcntl
 import json
@@ -48,14 +51,20 @@ import textwrap
 import time
 import zlib
 import tty
+try:
+    import tomllib
+except ImportError:  # Python before 3.11: herdr's defaults only, the user's config.toml unread
+    tomllib = None
 from datetime import datetime, timezone
 
 LOG_PATH = os.environ.get("CLAUDE_MODS_EVENT_LOG") or os.path.expanduser("~/.claude/agent-monitor/events.jsonl")
 MAIN = "main"
-VIEWS = ["shell", "agents", "graph", "roster", "keepsake"]
-LABELS = {"shell": "Shell", "agents": "Agents", "graph": "Agent graph", "roster": "Roster", "keepsake": "Keepsake"}
+VIEWS = ["shell", "agents", "graph", "roster", "keepsake", "keys"]
+LABELS = {"shell": "Shell", "agents": "Agents", "graph": "Agent graph", "roster": "Roster", "keepsake": "Keepsake",
+          "keys": "Keys"}
 AGENT_DIRS = [os.path.expanduser("~/.claude/agents"), os.path.join(os.getcwd(), ".claude", "agents")]
 KEEPSAKE_PATH = os.path.expanduser("~/.claude/keepsake.md")
+HERDR_CONFIG = os.path.expanduser("~/.config/herdr/config.toml")
 FRONT = re.compile(r"^---\r?\n(.*?)\r?\n---", re.S)  # a subagent file's frontmatter
 INLINE = re.compile(r"(`[^`]*`|\*\*[^*]+\*\*)")  # `code` and **bold** in a memo
 SHIFT_TAB = b"\x1b[Z"
@@ -66,6 +75,7 @@ MODES = re.compile(rb"\x1b\[\?(1049|1047|47|1000|1002|1003|1006)([hl])")
 ALT_MODES, MOUSE_MODES = (b"1049", b"1047", b"47"), (b"1000", b"1002", b"1003", b"1006")
 ARROWS = {b"\x1b[A": -1, b"\x1bOA": -1, b"\x1b[B": 1, b"\x1bOB": 1}
 PAGES = {b"\x1b[5~": -1, b"\x1b[6~": 1}
+SIDEWAYS = {b"\x1b[D": -1, b"\x1bOD": -1, b"\x1b[C": 1, b"\x1bOC": 1}  # Left and Right: the view before or after
 WHEEL = re.compile(rb"\x1b\[<6([45]);\d+;\d+M")  # SGR mouse report: button 64 is wheel up, 65 down
 # C0, DEL and C1: text from the log must never reach the terminal as an escape sequence
 CONTROL = re.compile("[\x00-\x1f\x7f-\x9f]")
@@ -412,19 +422,21 @@ class Agents:
 
 
 def header(view):
-    """The pane's title: Shell · [Agents] · Agent graph · Roster · Keepsake · Shift+Tab next."""
-    return " · ".join(f"[{LABELS[v]}]" if v == view else LABELS[v] for v in VIEWS) + " · Shift+Tab next"
+    """The pane's title: 1 Shell · [2 Agents] · 3 Agent graph · … · Shift+Tab next."""
+    names = (f"{i} {LABELS[v]}" for i, v in enumerate(VIEWS, 1))
+    return " · ".join(f"[{n}]" if v == view else n for v, n in zip(VIEWS, names)) + " · Shift+Tab next"
 
 
 def tab_strip(view, cols):
-    """Shell  Agents  Agent graph, the shown one bold on surface0, and the keys at the right."""
+    """1 Shell  2 Agents  3 Agent graph …, the shown one bold on surface0, and the keys at the right."""
     parts, used = [], 0
-    for v in VIEWS:
-        label = f" {LABELS[v]} "
+    wide = sum(len(f" {i} {LABELS[v]} ") for i, v in enumerate(VIEWS, 1)) <= cols
+    for i, v in enumerate(VIEWS, 1):
+        label = f" {i} {LABELS[v]} " if wide or v == view else f" {i} "  # narrow: only the shown view keeps its name
         piece = line_of([(label, "text" if v == view else "overlay1", v == view)], cols - used)
         parts.append(f"\x1b[48;2;{rgb('surface0')}m{piece}\x1b[49m" if v == view and piece else piece)
         used += len(label)
-    hint = "Shift+Tab next · c clear finished · Esc shell"
+    hint = f"1–{len(VIEWS)} ←→ views · c clear finished · Esc shell"
     if cols - used > len(hint) + 2:
         parts.append(line_of([(" " * (cols - used - len(hint) - 1) + hint, "overlay0", False)], cols - used))
     return "".join(parts)
@@ -841,6 +853,78 @@ def draw_keepsake(rows, cols, scroll, path=KEEPSAKE_PATH):
                     "No keepsake yet: write it to ~/.claude/keepsake.md")
 
 
+CHORD_NAMES = {"ctrl": "Ctrl", "shift": "Shift", "alt": "Alt", "cmd": "Cmd", "super": "Super", "tab": "Tab", "esc": "Esc",
+               "enter": "Enter", "left": "←", "right": "→", "up": "↑", "down": "↓", "minus": "-", "comma": ",",
+               "plus": "+", "ampersand": "&"}
+_herdr_default = None  # herdr --default-config, read once
+
+
+def chord(spec, prefix):
+    """A herdr binding as one presses it: prefix+shift+tab with prefix ctrl+b is Ctrl+b Shift+Tab."""
+    parts = spec.split("+")
+    lead = [chord(prefix, "")] if parts[0] == "prefix" else []
+    return " ".join(lead + ["+".join(CHORD_NAMES.get(p, p) for p in parts[len(lead):])])
+
+
+def herdr_default():
+    global _herdr_default
+    if _herdr_default is None:
+        try:
+            _herdr_default = subprocess.run([os.environ.get("HERDR_BIN_PATH") or "herdr", "--default-config"],
+                                            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=3).stdout
+        except (OSError, subprocess.SubprocessError):
+            _herdr_default = ""
+    return _herdr_default
+
+
+def herdr_keys(default_text, user_path=HERDR_CONFIG):
+    """herdr's bindings: (prefix, {action: binding}, [(key, command)]). The defaults are the commented
+    `# action = "binding"` lines of the [keys] section; the user's config.toml wins over them."""
+    binds, in_keys = {}, False
+    for line in default_text.splitlines():
+        if line.startswith("["):
+            in_keys = line.strip() == "[keys]"
+        elif in_keys and line.startswith("# ["):
+            in_keys = False  # commented example tables follow, not bindings
+        elif in_keys and (m := re.match(r'#\s*(\w+)\s*=\s*"([^"]*)"\s*(#.*)?$', line)):
+            binds[m.group(1)] = m.group(2)
+    try:
+        if tomllib is None:
+            raise OSError
+        with open(user_path, "rb") as f:
+            user = tomllib.load(f).get("keys")
+    except (OSError, ValueError):  # ValueError: bad TOML or bad UTF-8
+        user = None
+    user = user if isinstance(user, dict) else {}
+    binds.update((a, b) for a, b in user.items() if isinstance(b, str) and a != "command")
+    table = user.get("command")
+    commands = [(c["key"], c["command"]) for c in (table if isinstance(table, list) else [])
+                if isinstance(c, dict) and isinstance(c.get("key"), str) and isinstance(c.get("command"), str)]
+    return binds.pop("prefix", "") or "ctrl+b", binds, commands
+
+
+def draw_keys(rows, cols, scroll, default_text=None, user_path=HERDR_CONFIG):
+    """This pane's keys, then herdr's, then the user's own herdr commands."""
+    default_text = herdr_default() if default_text is None else default_text
+    prefix, binds, commands = herdr_keys(default_text, user_path)
+    md = ["## This pane", "- `Shift+Tab`  next view (from the shell: Agents)",
+          f"- `1`–`{len(VIEWS)}`  jump to a view: " + ", ".join(f"{i} {LABELS[v]}" for i, v in enumerate(VIEWS, 1)),
+          "- `←` `→`  view before or after", "- `↑` `↓` `PgUp` `PgDn`  scroll",
+          "- `Esc` `q`  back to the shell", "- `c`  clear finished agents"]
+    if not default_text:
+        md.append("herdr's default keys show here once `herdr --default-config` runs.")
+    if binds:
+        md.append(f"## herdr: press {chord(prefix, '')}, then the key")
+        md += [f"- `{chord(b, prefix)}`  {a.replace('_', ' ')}" for a, b in binds.items() if b and not a.startswith("navigate_")]
+        nav = [f"- `{chord(b, prefix)}`  {a.replace('_', ' ')}" for a, b in binds.items() if b and a.startswith("navigate_")]
+        md += ["## Navigate mode"] + nav if nav else []
+    if commands:
+        md.append("## Your commands")
+        md += [f"- `{chord(key, prefix)}`  {cmd}" for key, cmd in commands if key]
+    return draw_doc("keys", md_rows("\n".join(md), cols), f"herdr prefix {chord(prefix, '')} · ~/.config/herdr/config.toml",
+                    rows, cols, scroll, "")
+
+
 def screen(view, agents, rows, cols, now, scroll=None):
     """Every row of the pane for a view: the tab strip, the view, blanks to the bottom."""
     scroll = {} if scroll is None else scroll
@@ -848,6 +932,8 @@ def screen(view, agents, rows, cols, now, scroll=None):
         body = draw_roster(rows - 1, cols, scroll)
     elif view == "keepsake":
         body = draw_keepsake(rows - 1, cols, scroll)
+    elif view == "keys":
+        body = draw_keys(rows - 1, cols, scroll)
     elif view == "agents":
         body = draw_agents(agents.session(), rows - 1, cols, now, scroll)
     else:
@@ -929,6 +1015,10 @@ def main():
             elif key == b"c":
                 if agents.session():
                     agents.session().clear()
+            elif key.isdigit() and 1 <= int(key) <= len(VIEWS):
+                show(VIEWS[int(key) - 1])
+            elif key in SIDEWAYS:
+                show(VIEWS[(at + SIDEWAYS[key]) % len(VIEWS)])
             else:
                 wheel = WHEEL.match(key)
                 step = ARROWS.get(key, 0) + PAGES.get(key, 0) * page + ((3 if wheel.group(1) == b"5" else -3) if wheel else 0)
