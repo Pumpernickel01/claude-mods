@@ -66,8 +66,9 @@ closes then). Design and decisions: `docs/2026-10-18-herdr-column-design.md`.
 
 ## Git strip
 
-On a tab wide enough (at least 120 columns, 52 for the strip and 68 for the column),
-a strip of three panes opens left of the column: **Files** (branch, ahead/behind, counts, every changed path),
+Every tab has a strip of three panes left of the column, 40 % of the tab's width
+when it is made. A column made by an older version
+without the strip is made again with it by `/activity`. The strip holds: **Files** (branch, ahead/behind, counts, every changed path),
 **Branches** (local branches, newest first, ahead/behind or gone) and **Commits** (the
 graph, unpushed shas red, refs, age), about 40 / 20 / 40 % of the height. Read-only: up/down,
 j/k, PgUp/PgDn, the wheel and a click move the selection, `q` closes a pane (`/activity`

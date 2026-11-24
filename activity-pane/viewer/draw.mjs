@@ -1,27 +1,27 @@
 // What the column's viewers draw, as plain functions of the feed, the view and
 // the pane's size: no terminal here, so `node --test` can check every line.
 
-// Catppuccin Mocha, as the pane inside Claude and herdr itself use.
-export const MOCHA = {
-  text: '#cdd6f4',
-  blue: '#89b4fa',
-  mauve: '#cba6f7',
-  green: '#a6e3a1',
-  yellow: '#f9e2af',
-  peach: '#fab387',
-  red: '#f38ba8',
-  teal: '#94e2d5',
-  subtext0: '#a6adc8',
-  overlay1: '#7f849c',
-  overlay0: '#6c7086',
-  surface0: '#313244',
+// The 16 basic terminal colours (SGR codes), not fixed RGB: the terminal draws them in its own
+// theme, so the text reads on a light background as on a dark one. Secondary text is the normal
+// text colour; only the least important is grey (90).
+export const THEME = {
+  text: '39',
+  blue: '34',
+  mauve: '35',
+  green: '32',
+  yellow: '33',
+  peach: '91',
+  red: '31',
+  teal: '36',
+  subtext0: '39',
+  overlay1: '90',
+  overlay0: '90',
 }
 
-const rgb = hex => [1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16)).join(';')
-
-export const paint = (hex, text) => (text === '' ? '' : `\x1b[38;2;${rgb(hex)}m${text}\x1b[39m`)
+export const paint = (code, text) => (text === '' ? '' : `\x1b[${code}m${text}\x1b[39m`)
 export const bold = text => `\x1b[1m${text}\x1b[22m`
-export const onSelected = text => `\x1b[48;2;${rgb(MOCHA.surface0)}m${text}\x1b[49m`
+// reverse video: the theme's own text and background colours, swapped
+export const onSelected = text => `\x1b[7m${text}\x1b[27m`
 
 const NONE = /[\p{M}‍︎️]/u
 const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]|\p{Emoji_Presentation}/u
@@ -131,10 +131,10 @@ export const actionsOf = chunk => {
 export const headerOf = (left, right, cols) => {
   const room = Math.max(0, cols - cellsOf(right) - 1)
 
-  return paint(MOCHA.overlay1, fit(left, room)) + ' ' + paint(MOCHA.overlay0, right)
+  return paint(THEME.overlay1, fit(left, room)) + ' ' + paint(THEME.overlay0, right)
 }
 
-const TAG_COLOR = { LAN: MOCHA.teal, local: MOCHA.subtext0 }
+const TAG_COLOR = { LAN: THEME.teal, local: THEME.subtext0 }
 
 // One flow as a line: "14:02:20 MCP       ▶ Gmail via claude.ai  search_threads  ↑ 0.2 KB ↓ 8 KB".
 export const flowLineOf = (flow, cols) => {
@@ -150,21 +150,21 @@ export const flowLineOf = (flow, cols) => {
   const tagAt = flow.tag === undefined ? -1 : toText.lastIndexOf(` ${flow.tag}`)
   const toPainted =
     tagAt === -1
-      ? paint(flow.tag === undefined ? MOCHA.blue : TAG_COLOR[flow.tag], toText)
-      : paint(TAG_COLOR[flow.tag], toText.slice(0, tagAt)) + paint(MOCHA.overlay0, toText.slice(tagAt))
+      ? paint(flow.tag === undefined ? THEME.blue : TAG_COLOR[flow.tag], toText)
+      : paint(TAG_COLOR[flow.tag], toText.slice(0, tagAt)) + paint(THEME.overlay0, toText.slice(tagAt))
 
   return [
-    paint(MOCHA.overlay0, clockOf(flow.at)),
+    paint(THEME.overlay0, clockOf(flow.at)),
     ' ',
-    paint(MOCHA.mauve, fit(flow.from, fromCells)),
-    paint(MOCHA.overlay0, ' ▶ '),
+    paint(THEME.mauve, fit(flow.from, fromCells)),
+    paint(THEME.overlay0, ' ▶ '),
     toPainted,
     '  ',
-    paint(flow.isFailed ? MOCHA.red : MOCHA.text, fit(what, whatCells)),
+    paint(flow.isFailed ? THEME.red : THEME.text, fit(what, whatCells)),
     sizes === '' ? '' : '  ',
-    flow.up ? paint(MOCHA.yellow, `↑ ${amountOf(flow.up)}`) : '',
+    flow.up ? paint(THEME.yellow, `↑ ${amountOf(flow.up)}`) : '',
     flow.up && flow.down ? ' ' : '',
-    flow.down ? paint(MOCHA.green, `↓ ${amountOf(flow.down)}`) : '',
+    flow.down ? paint(THEME.green, `↓ ${amountOf(flow.down)}`) : '',
   ].join('')
 }
 
@@ -173,7 +173,7 @@ export const drawFlow = (feed, view, rows, cols) => {
   const list = feed?.flows ?? []
   const body = Math.max(1, rows - 2)
   if (feed === undefined) return [headerOf('Data flow', 'waiting for Claude…', cols)]
-  if (list.length === 0) return [headerOf('Data flow · no transfers yet', '', cols), paint(MOCHA.overlay0, 'No transfers yet.')]
+  if (list.length === 0) return [headerOf('Data flow · no transfers yet', '', cols), paint(THEME.overlay0, 'No transfers yet.')]
 
   const { start, end, index } = flowWindow(list, body, view)
   const newer = list.length - end
@@ -183,13 +183,13 @@ export const drawFlow = (feed, view, rows, cols) => {
     const line = flowLineOf(list[at], cols)
     lines.push(at === index ? onSelected(line) : line)
   }
-  lines.push(paint(MOCHA.overlay1, fit(`  └ ${oneLine(list[index].detail)}`, cols)))
+  lines.push(paint(THEME.overlay1, fit(`  └ ${oneLine(list[index].detail)}`, cols)))
 
   return lines
 }
 
 const MARK = { running: '…', done: '✓', failed: '✗', denied: '⊘' }
-const MARK_COLOR = { running: MOCHA.yellow, done: MOCHA.green, failed: MOCHA.red, denied: MOCHA.peach }
+const MARK_COLOR = { running: THEME.yellow, done: THEME.green, failed: THEME.red, denied: THEME.peach }
 const took = ms => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`)
 
 // One tool call as a line: "✓ ↳ Bash 1.2s claude plugin test .".
@@ -201,11 +201,11 @@ export const toolLineOf = (call, cols) => {
   return [
     paint(MARK_COLOR[call.state], MARK[call.state]),
     ' ',
-    call.isSubagent ? paint(MOCHA.mauve, '↳ ') : '',
-    paint(MOCHA.blue, bold(call.tool)),
-    paint(MOCHA.overlay0, time),
+    call.isSubagent ? paint(THEME.mauve, '↳ ') : '',
+    paint(THEME.blue, bold(call.tool)),
+    paint(THEME.overlay0, time),
     ' ',
-    paint(MOCHA.subtext0, fit(oneLine(call.detail), room)),
+    paint(THEME.subtext0, fit(oneLine(call.detail), room)),
   ].join('')
 }
 

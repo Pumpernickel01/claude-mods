@@ -93,7 +93,7 @@ test('files are drawn exactly as wide as the pane, a hostile name never an escap
   assert.equal(lines.length, 6)
   assert.deepEqual(widths(lines), Array(6).fill(52))
   assert.match(plain(lines[1]), /^M {2}src\/app\.mjs/)
-  assert.match(lines[2], /\x1b\[48;2;49;50;68m/)
+  assert.match(lines[2], /\x1b\[7m/)
   assert.match(plain(lines[3]), /^R {2}src\/new\.mjs ← src\/old\.mjs/)
   for (const line of lines.slice(1)) assert.doesNotMatch(line.replace(/\x1b\[[\d;]*m/g, ''), /[\x00-\x08\x0b-\x1f\x7f-\x9f]/)
   assert.deepEqual(widths(drawFiles(feed, { at: 0 }, 4, 20)), Array(4).fill(20))
@@ -119,8 +119,8 @@ test('branches and commits are drawn exactly as wide as the pane', () => {
   }
   const c = drawCommits(feed, { at: 0 }, 8, 52)
   assert.match(plain(c[1]), /^\* aaaaaaa \[HEAD -> dev\] A very/)
-  assert.match(c[1], /\x1b\[38;2;243;139;168maaaaaaa/)
-  assert.match(c[3], /\x1b\[38;2;249;226;175mbbbbbbb/)
+  assert.match(c[1], /\x1b\[31maaaaaaa/)
+  assert.match(c[3], /\x1b\[33mbbbbbbb/)
   assert.match(plain(c[0]), /^Commits · 1 unpushed/)
 })
 

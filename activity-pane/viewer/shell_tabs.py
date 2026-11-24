@@ -80,10 +80,10 @@ WHEEL = re.compile(rb"\x1b\[<6([45]);\d+;\d+M")  # SGR mouse report: button 64 i
 # C0, DEL and C1: text from the log must never reach the terminal as an escape sequence
 CONTROL = re.compile("[\x00-\x1f\x7f-\x9f]")
 
-# Catppuccin Mocha, as the column's other viewers use.
-MOCHA = {"text": "#cdd6f4", "blue": "#89b4fa", "mauve": "#cba6f7", "green": "#a6e3a1", "yellow": "#f9e2af", "red": "#f38ba8",
-         "teal": "#94e2d5", "peach": "#fab387", "subtext0": "#a6adc8", "overlay1": "#7f849c", "overlay0": "#6c7086",
-         "surface2": "#585b70", "surface0": "#313244"}
+# The 16 basic terminal colours (SGR codes), as the column's other viewers use: the terminal
+# draws them in its own theme, so they read on a light background as on a dark one.
+THEME = {"text": "39", "blue": "34", "mauve": "35", "green": "32", "yellow": "33", "red": "31",
+         "teal": "36", "peach": "91", "subtext0": "39", "overlay1": "90", "overlay0": "90", "surface2": "90"}
 # Live agents draw bright; finished ones grey, so they read as no longer in use.
 LIVE = ("starting", "running")
 STATUS = {"starting": "peach", "running": "yellow", "idle": "subtext0", "failed": "red"}
@@ -93,9 +93,8 @@ FLOW_AFTER_RETURN = 3.0  # seconds a finished agent's edge flows back to its par
 HEX_ID = re.compile(r"[0-9a-f]{8,}")  # an agent id, as against a spawn's tool_use_id
 
 
-def rgb(color):
-    h = MOCHA[color]
-    return ";".join(str(int(h[i:i + 2], 16)) for i in (1, 3, 5))
+def sgr(color):
+    return THEME[color]
 
 
 def line_of(segs, cols):
@@ -106,7 +105,7 @@ def line_of(segs, cols):
         left -= len(text)
         if text and bold:
             text = f"\x1b[1m{text}\x1b[22m"
-        out.append(f"\x1b[38;2;{rgb(color)}m{text}\x1b[39m" if text and color else text)
+        out.append(f"\x1b[{sgr(color)}m{text}\x1b[39m" if text and color else text)
     return "".join(out)
 
 
@@ -428,13 +427,13 @@ def header(view):
 
 
 def tab_strip(view, cols):
-    """1 Shell  2 Agents  3 Agent graph …, the shown one bold on surface0, and the keys at the right."""
+    """1 Shell  2 Agents  3 Agent graph …, the shown one bold in reverse video, and the keys at the right."""
     parts, used = [], 0
     wide = sum(len(f" {i} {LABELS[v]} ") for i, v in enumerate(VIEWS, 1)) <= cols
     for i, v in enumerate(VIEWS, 1):
         label = f" {i} {LABELS[v]} " if wide or v == view else f" {i} "  # narrow: only the shown view keeps its name
         piece = line_of([(label, "text" if v == view else "overlay1", v == view)], cols - used)
-        parts.append(f"\x1b[48;2;{rgb('surface0')}m{piece}\x1b[49m" if v == view and piece else piece)
+        parts.append(f"\x1b[7m{piece}\x1b[27m" if v == view and piece else piece)
         used += len(label)
     hint = f"1–{len(VIEWS)} ←→ views · c clear finished · Esc shell"
     if cols - used > len(hint) + 2:

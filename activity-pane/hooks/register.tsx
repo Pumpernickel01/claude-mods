@@ -6,16 +6,14 @@ import { flowsOfStep, flowsOfTool, hostOfRemote, inputOf } from './flows'
 import type { Draft } from './flows'
 import {
   FLOW_ROWS,
-  GIT_COLS,
   GIT_RATIOS,
-  STRIP_MIN,
+  GIT_SHARE,
   TOOLS_ROWS,
   feedDirOf,
   feedPathOf,
   paneIdOf,
   rectOf,
   ratioKeeping,
-  ratioKeepingWide,
   ratioLeaving,
   ratioText,
   ratiosOf,
@@ -209,34 +207,29 @@ async function locked<T>($: EngineInterface, herdr: Herdr, work: () => Promise<T
 const closeTab = ($: EngineInterface, herdr: Herdr, tab: string) =>
   herdrRun($, herdr, ['tab', 'close', tab]).then(() => undefined, () => undefined)
 
-// Makes a tab in the Activity workspace; when it is wide enough, splits its pane right for the
-// column, leaving it the git strip's Files; the column's pane down twice (data flow, shell, tools)
-// and the strip's down twice (Files, Branches, Commits). A failure closes the whole tab.
+// Makes a tab in the activity session and splits its pane right for the column, leaving it the
+// git strip's Files; the column's pane down twice (data flow, shell, tools) and the strip's down
+// twice (Files, Branches, Commits). A failure closes the whole tab.
 async function build($: EngineInterface, herdr: Herdr): Promise<Column> {
   const { tab, pane: root } = await newTab($, herdr)
   try {
-    const { width, height } = await sizeOf($, herdr, root)
-    const ratios = ratiosOf(height)
-    const hasStrip = width >= STRIP_MIN
-    const flow = hasStrip ? await split($, herdr, root, 'right', ratioKeepingWide(width, GIT_COLS)) : root
+    const ratios = ratiosOf((await sizeOf($, herdr, root)).height)
+    const flow = await split($, herdr, root, 'right', GIT_SHARE)
     const shell = await split($, herdr, flow, 'down', ratios.flow)
     const tools = await split($, herdr, shell, 'down', ratios.tools)
-    let git: GitPanes | undefined
-    if (hasStrip) {
-      const branches = await split($, herdr, root, 'down', GIT_RATIOS.files)
-      const commits = await split($, herdr, branches, 'down', GIT_RATIOS.branches)
-      git = { files: root, branches, commits }
-    }
+    const branches = await split($, herdr, root, 'down', GIT_RATIOS.files)
+    const commits = await split($, herdr, branches, 'down', GIT_RATIOS.branches)
+    const git: GitPanes = { files: root, branches, commits }
 
     await herdrRun($, herdr, ['pane', 'rename', shell, 'Shell'])
     await herdrRun($, herdr, ['pane', 'run', shell, shellCommand($.plugin.root, herdr.feed)])
     await Promise.all([
       startViewer($, herdr, flow, 'flow'),
       startViewer($, herdr, tools, 'tools'),
-      ...(git === undefined ? [] : GIT_KEYS.map(key => startGit($, herdr, git[key], key))),
+      ...GIT_KEYS.map(key => startGit($, herdr, git[key], key)),
     ])
 
-    return git === undefined ? { tab, flow, shell, tools } : { tab, flow, shell, tools, git }
+    return { tab, flow, shell, tools, git }
   } catch (error) {
     await closeTab($, herdr, tab)
     throw error
@@ -279,9 +272,10 @@ async function repairGit($: EngineInterface, herdr: Herdr, git: GitPanes) {
   return now
 }
 
-// Opens the column in the Activity workspace, or makes again what is gone of it. A shell
-// still there is kept whatever else is missing: it may be running something. A column the old
-// mod left beside Claude stays until /activity moves it (its shell is closed then).
+// Opens the column in the activity session, or makes again what is gone of it. A shell
+// still there is kept whatever else is missing: it may be running something. Two kinds are built
+// again only when /activity asks, their shell closed then: a column the old mod left beside Claude,
+// and one made without the git strip.
 async function openColumn($: EngineInterface, herdr: Herdr, isAsked: boolean) {
   const known = (await $.store.get(columnKey(herdr))) as Column | undefined
   const isBeside = known !== undefined && known.tab === undefined
@@ -301,7 +295,9 @@ async function openColumn($: EngineInterface, herdr: Herdr, isAsked: boolean) {
   }
 
   let column: Column
-  if (known !== undefined && hasShell && !isBeside) {
+  // a column built without the git strip (once skipped in a narrow window) is built again when asked
+  const isStripless = known?.git === undefined && isAsked
+  if (known !== undefined && hasShell && !isBeside && !isStripless) {
     column = { ...known }
     if (!hasTools) {
       column.tools = await split($, herdr, column.shell, 'down', ratioLeaving(await heightIn($, herdr, column.shell), TOOLS_ROWS))

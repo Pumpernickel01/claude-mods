@@ -241,7 +241,7 @@ class Live(Files):
         S = a.session()
         self.assertEqual((S.nodes["run_1111"].status, S.nodes["fin_2222"].status), ("gone", "done"))
         rows = shell_tabs.draw_agents(S, 14, 140, T0 + 10)
-        grey = f"38;2;{shell_tabs.rgb('overlay0')}m"
+        grey = f"\x1b[{shell_tabs.sgr('overlay0')}m"
         for name in ("n_1111", "n_2222"):
             self.assertIn(grey, next(row for row in rows if name in plain([row])[0]))
         self.assertIn("agents 0 running / 1 done / 0 failed / 1 gone", plain(rows)[-1])
@@ -290,7 +290,7 @@ class Live(Files):
         self.assertIn("p_4444 ┄▶ s_5555  message", table)
         self.assertRegex(table, r"s_5555\s+researcher\s")  # the given name stays beside the id
         graph = "".join(shell_tabs.draw_graph(a.model, S, 14, 110, T0 + 6))
-        self.assertIn(f"38;2;{shell_tabs.rgb('peach')}m", graph)  # the message edge is flowing
+        self.assertIn(f"\x1b[{shell_tabs.sgr('peach')}m", graph)  # the message edge is flowing
         self.assertIn("● s_5555", "".join(plain([graph])))
 
     def test_an_agent_never_seen_starting_is_not_shown(self):
