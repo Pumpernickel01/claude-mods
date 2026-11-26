@@ -171,6 +171,8 @@ async function newTab($: EngineInterface, herdr: Herdr) {
     return there ?? tabOf(await herdrRun($, herdr, ['workspace', 'create', '--label', WORKSPACE, '--cwd', herdr.root, '--focus']))
   })
   if (typeof found === 'string') {
+    // herdr drops a workspace's label when it restores it; unnamed, its header shows the first session's folder
+    await herdrRun($, herdr, ['workspace', 'rename', found, WORKSPACE]).catch(() => undefined)
     return tabOf(await herdrRun($, herdr, ['tab', 'create', '--workspace', found, '--label', label, '--cwd', herdr.root, '--no-focus']))
   }
 
