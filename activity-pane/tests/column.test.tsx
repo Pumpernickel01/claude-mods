@@ -64,6 +64,17 @@ test('a second session gets its own tab, named after its folder, in the same Act
   expect(tab.activity().sort()).toEqual(SIX)
 })
 
+test('a restored workspace that lost its label is named "Activity" again, not after a folder', async ($, on) => {
+  const tab = herdr(on, NARROW)
+  tab.workspaces.set('inosport-crm', 'w3')
+  session(on, IN_HERDR)
+
+  await $.session.start(START)
+
+  expect(tab.ran).toContainEqual(['workspace', 'rename', 'w3', 'Activity'])
+  expect(tab.ran).toContainEqual(['tab', 'create', '--workspace', 'w3', '--label', 'lab2', '--cwd', '/Users/me/lab2', '--no-focus'])
+})
+
 test('a column left beside Claude by the old mod stays on reload; /activity moves it to the Activity workspace', async ($, on) => {
   const tab = herdr(on, NARROW)
   // the old shape: three panes in Claude's own tab, no `tab` stored

@@ -4,17 +4,16 @@ A column of panels for each Claude Code session that runs inside [herdr](https:/
 The panels live in a second herdr session, `activity`, one tab per Claude session named
 after its folder, so Claude's window holds only Claude: put several sessions side by side
 there and see which one waits for you. Show the panels in a second terminal window with
-`herdr session attach activity`. To open both windows with one `herdr`, add this to
-`~/.zshrc` (Terminal.app; a bare `herdr` outside herdr only, anything else passes through):
+`herdr session attach activity`. To open both windows with one `herdr`, add this line to
+`~/.zshrc` (Terminal.app; needs `jq`):
 
 ```zsh
-herdr() {
-  if [[ $# -eq 0 && -z $HERDR_ENV ]]; then
-    osascript -e 'tell application "Terminal" to do script "exec herdr session attach activity"' >/dev/null
-  fi
-  command herdr "$@"
-}
+source ~/claude-mods/activity-pane/herdr.zsh
 ```
+
+Then a bare `herdr` typed outside herdr starts Claude in the folder you typed it in, in a
+workspace named after that folder. If Claude already runs there, it shows that workspace
+instead. Any other `herdr` command passes through unchanged.
 
 - **Data flow** (top): one line per transfer Claude makes (model requests, web
   fetches, MCP calls, hosts shell commands reach).
