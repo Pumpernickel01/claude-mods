@@ -15,13 +15,18 @@ const DONE = { answer: 'done', durationMs: 1_000, isAborted: false, reason: 'ans
 
 // The colour codes written to the pane's terminal, in order.
 let painted: string[] = []
+// what `$.agent.list()` answers: the session's subagents and teammates now
+let agents: { id: string, status: string, parentId?: string, spawnedBy?: string }[] = []
 // the herdr config reloads asked for, one after each colour write
 let reloads = 0
 const HERDR = { HERDR_ENV: '1', HERDR_BIN_PATH: '/opt/homebrew/bin/herdr' }
 
-function engine(on: On, { tools = true } = {}) {
+// `slowList`: a clock agent.list waits 300 ms on, the way a busy engine might answer late.
+function engine(on: On, { tools = true, slowList }: { tools?: boolean, slowList?: { sleep: (ms: number) => Promise<void> } } = {}) {
   painted = []
   reloads = 0
+  agents = []
+  on('agent.list', async () => (await slowList?.sleep(300), { value: agents as never }))
   mock.env(on, HERDR)
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
@@ -183,5 +188,73 @@ test('a question blinks while it waits, and stops once answered', async ($, on) 
 
   await $.tool.call({ tool: 'AskUserQuestion', tool_use_id: 'q1', questions: [] } as never)
   expect(engineSeen).toEqual(['● Claude is asking you something'])
+  expect(await band($)).toBeUndefined()
+})
+
+test('a background agent still at work blinks nothing when the main turn ends or goes idle', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  await $.session.start(START)
+  agents = [{ id: 'sub1', status: 'running' }, { id: 'sub0', status: 'completed' }]
+
+  await $.turn.complete({ turnId: 't1', ...DONE })
+  expect(await band($)).toBeUndefined()
+  await $.classic.Notification({ message: 'Claude is waiting for your input', notification_type: 'idle_prompt' })
+  expect(await band($)).toBeUndefined()
+  expect(painted).toEqual([PLAIN])
+
+  // the agent's report wakes the main loop; once that turn ends with no agent at work, it blinks
+  agents = [{ id: 'sub1', status: 'completed' }, { id: 'sub0', status: 'completed' }]
+  await $.turn.start({ text: '<task-notification>', turnId: 't2' })
+  await $.turn.complete({ turnId: 't2', ...DONE })
+  expect(await band($)).toEqual({ text: '● Claude has finished', glow: GLOW })
+})
+
+test('a background agent still at work does not hide a question for the person', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  agents = [{ id: 'sub1', status: 'running' }]
+
+  await $.classic.Notification({ message: 'Claude needs your permission', notification_type: 'permission_prompt' })
+  expect((await band($))?.text).toBe('● Claude is asking you something')
+})
+
+test('a teammate idle between turns does not hold the blink back', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  agents = [{ id: 'mate1', status: 'idle' }]
+
+  await $.turn.complete({ turnId: 't1', ...DONE })
+  expect((await band($))?.text).toBe('● Claude has finished')
+})
+
+test('a question from a background agent stays lit when the main turn ends', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  agents = [{ id: 'sub1', status: 'running' }]
+
+  await $.classic.Notification({ message: 'Claude needs your permission', notification_type: 'permission_prompt' })
+  await $.turn.complete({ turnId: 't1', ...DONE })
+  expect((await band($))?.text).toBe('● Claude is asking you something')
+})
+
+test('an agent that reports elsewhere, inside an agent or to a plugin, does not hold the blink back', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  agents = [{ id: 'sub1', status: 'completed' }, { id: 'sub2', status: 'running', parentId: 'sub1' }, { id: 'p1', status: 'running', spawnedBy: 'some-mod' }]
+
+  await $.turn.complete({ turnId: 't1', ...DONE })
+  expect((await band($))?.text).toBe('● Claude has finished')
+})
+
+test('a new turn that starts while the agents are checked blinks nothing', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { slowList: clock })
+
+  const ending = $.turn.complete({ turnId: 't1', ...DONE })
+  const idle = $.classic.Notification({ message: 'Claude is waiting for your input', notification_type: 'idle_prompt' })
+  await $.turn.start({ text: '<task-notification>', turnId: 't2' })
+  await clock.advance(300)
+  await Promise.all([ending, idle])
   expect(await band($)).toBeUndefined()
 })

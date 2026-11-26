@@ -23,6 +23,17 @@ const SAYS: Record<Why, string> = { asking: '● Claude is asking you something'
 // shortcut: an approved call that runs long keeps "asking" until it ends; nothing tells a mod when
 // the person answered the dialog. Upgrade if an event for that answer appears.
 const NOTIFIED: Record<string, Why> = { permission_prompt: 'asking', elicitation_dialog: 'asking', idle_prompt: 'finished' }
+// An agent in one of these is still working (a teammate between turns is `idle`, so not here).
+const AT_WORK = new Set(['pending', 'running', 'waiting'])
+
+// Whether a background agent the main loop started still works. Its report wakes the main loop
+// again, so "finished" waits for the turn that ends with none at work. An agent inside another
+// agent, or one a plugin started, reports elsewhere and never wakes the main loop.
+async function agentsAtWork($: EngineInterface) {
+  const agents = await $.agent.list().catch(() => [])
+
+  return agents.some(agent => AT_WORK.has(agent.status) && agent.parentId === undefined && agent.spawnedBy === undefined)
+}
 
 // The one argument worth showing for a tool: its command, file, pattern or target.
 const detailOf = (e: object): string => {
@@ -46,6 +57,8 @@ type Watch = {
   isLit: boolean
   blink?: { cancel: () => void }
   ticks: number
+  // the person's returns and the main loop's new turns, counted
+  moves: number
   tty?: string
   herdr?: string
   painted?: boolean
@@ -112,6 +125,13 @@ function settle($: EngineInterface, watch: Watch) {
   $.ui.invalidate('ui.render')
 }
 
+// Blinks "finished" unless an agent still works, or the person or a new turn came in while
+// agent.list answered.
+async function finishUnlessMoved($: EngineInterface, watch: Watch) {
+  const at = watch.moves
+  if (!(await agentsAtWork($)) && at === watch.moves) attend($, watch, 'finished')
+}
+
 // The newest call still running, or thinking when none is.
 function show($: EngineInterface, running: Map<string, string>) {
   const labels = [...running.values()]
@@ -122,23 +142,26 @@ export const register: Register = on => {
   // The main loop's tool calls still running, newest last, so parallel calls read right.
   const running = new Map<string, string>()
   let tools = 0
-  const watch: Watch = { isLit: false, ticks: 0 }
+  const watch: Watch = { isLit: false, ticks: 0, moves: 0 }
 
   // The person is back: typing in the prompt box, sending, or a new turn.
   on('prompt.edit', ($, e, next) => {
+    watch.moves += 1
     settle($, watch)
 
     return next(e)
   })
   on('prompt.submit', ($, e, next) => {
+    watch.moves += 1
     settle($, watch)
 
     return next(e)
   })
 
-  on('classic.Notification', ($, e, next) => {
+  on('classic.Notification', async ($, e, next) => {
     const reason = NOTIFIED[e.notification_type]
-    if (reason !== undefined) attend($, watch, reason)
+    if (reason === 'asking') attend($, watch, reason)
+    else if (reason === 'finished') await finishUnlessMoved($, watch)
 
     return next(e)
   })
@@ -180,6 +203,7 @@ export const register: Register = on => {
 
   on('turn.start', ($, e, next) => {
     if (e.agentId === undefined) {
+      watch.moves += 1
       settle($, watch)
       running.clear()
       tools = 0
@@ -212,14 +236,15 @@ export const register: Register = on => {
     }
   })
 
-  on('turn.complete', ($, e, next) => {
+  on('turn.complete', async ($, e, next) => {
     if (e.agentId === undefined) {
-      // a turn the person stopped (Esc) needs no call back: they are here
-      if (e.isAborted) settle($, watch)
-      else attend($, watch, 'finished')
       running.clear()
       // Nothing to say while idle: the band above the prompt has the time and cost.
       $.ui.status(undefined)
+      // a turn the person stopped (Esc) needs no call back: they are here
+      if (e.isAborted) settle($, watch)
+      // An agent still at work leaves the band as it is: a question it asks stays lit.
+      else await finishUnlessMoved($, watch)
     }
 
     return next(e)
